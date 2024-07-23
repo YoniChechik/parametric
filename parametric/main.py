@@ -1,87 +1,79 @@
 import os
 import sys
-from itertools import starmap
-from typing import Any, Dict, List, Optional, Tuple, Union, get_type_hints
+from types import UnionType
+from typing import Any, Tuple, Union, get_args, get_origin, get_type_hints
 
 import yaml
 
+# Immutable types set
+BASE_TYPES = (int, float, bool, str)
 
-def convert_type(value: Any, target_type: Any) -> Any:
-    try:
-        if target_type == Any:
-            return value  # No conversion needed
-        origin_type = getattr(target_type, "__origin__", None)
-        if origin_type is Union:
-            # Handle Optional[X] (which is Union[X, None])
-            for arg in target_type.__args__:
-                if arg is type(None):
-                    if value is None:
-                        return None
-                else:
-                    try:
-                        return convert_type(value, arg)
-                    except (ValueError, TypeError):
-                        continue
-            raise ValueError(f"Cannot convert {value} to {target_type}")
-        elif origin_type in {list, List}:
-            elem_type = target_type.__args__[0]
-            return [convert_type(v, elem_type) for v in value]
-        elif origin_type in {tuple, Tuple}:
-            elem_types = target_type.__args__
-            return tuple(starmap(convert_type, zip(value, elem_types)))
+EMPTY_FIELD = "__parametric_empty_field"
+
+
+def _wrangle_type(field_name: str, value: Any, target_type: Any) -> Any:
+    if target_type == Any:
+        raise ValueError(f"Type `Any` is not allowed, cannot convert '{field_name}'")
+
+    origin_type = get_origin(target_type)
+    if origin_type in {Union, UnionType}:
+        # Test that at least one conversion works
+        for inner_type in get_args(target_type):
+            try:
+                return _wrangle_type(field_name, value, inner_type)
+            except (ValueError, TypeError):
+                continue
+        raise ValueError(f"Cannot convert {value} to any of the types in {target_type}")
+    elif origin_type in {tuple, Tuple}:
+        elem_types = get_args(target_type)
+        if elem_types[-1] is Ellipsis:
+            elem_type = elem_types[0]
+            return tuple(_wrangle_type(field_name, v, elem_type) for v in value)
         else:
+            return tuple(_wrangle_type(field_name, v, t) for v, t in zip(value, elem_types))
+    elif target_type is type(None):
+        if value is not None:
+            raise ValueError(f"Cannot convert {value} to {target_type}")
+        return None
+    elif target_type in BASE_TYPES:
+        try:
             return target_type(value)
-    except (ValueError, TypeError):
-        raise ValueError(f"Cannot convert {value} to {target_type}")
-
-
-def validate_field(field_name: str, field_type: Any, value: Any):
-    origin_type = getattr(field_type, "__origin__", None)
-    if origin_type is Union:
-        if not any(isinstance(value, t) for t in field_type.__args__):
-            raise ValueError(
-                f"Field {field_name} expects type {field_type}, got {type(value)}"
-            )
-    elif origin_type in {list, List, tuple, Tuple}:
-        if not isinstance(value, origin_type):
-            raise ValueError(
-                f"Field {field_name} expects type {field_type}, got {type(value)}"
-            )
-        elem_type = field_type.__args__[0]
-        for elem in value:
-            validate_field(f"{field_name} element", elem_type, elem)
+        except (ValueError, TypeError):
+            raise ValueError(f"Cannot convert {value} to {target_type}")
     else:
-        if not isinstance(value, field_type):
-            raise ValueError(
-                f"Field {field_name} expects type {field_type}, got {type(value)}"
-            )
+        raise ValueError(f"Field {field_name} should have only this immutable typehints: None, tuple, {BASE_TYPES}")
 
 
-class ConfigBase:
+class BaseScheme:
     def __init__(self):
         self._before_interpolation = {}
         self._after_interpolation = {}
         self._is_frozen = False
-        self.validate()
 
-    def validate(self):
-        type_hints = get_type_hints(self.__class__)
-        for field_name, field_type in type_hints.items():
-            # EMPTY FIELD
-            if field_name not in self.__dict__:
+        # ==== convert all on init
+        param_name_to_type_hint = get_type_hints(self)
+        for field_name, field_type in param_name_to_type_hint.items():
+            given_value = self._get_value(field_name)
+
+            # dont work on empty field
+            if given_value == EMPTY_FIELD:
                 continue
-            value = getattr(self, field_name)
-            if value is not None:
-                validate_field(field_name, field_type, value)
 
-    def _override(self, changed_params: Dict[str, Any]):
-        type_hints = get_type_hints(self.__class__)
-        for key, value in changed_params.items():
-            if key in type_hints:
-                field_type = type_hints[key]
-                value = convert_type(value, field_type)
-                validate_field(key, field_type, value)
-                setattr(self, key, value)
+            converted_value = _wrangle_type(field_name, given_value, field_type)
+            setattr(self, field_name, converted_value)
+
+    def _get_value(self, field_name):
+        given_value = getattr(self, field_name, EMPTY_FIELD)
+        return given_value
+
+    def _override(self, changed_params: dict[str, Any]):
+        param_name_to_type_hint = get_type_hints(self)
+        for param_name, value in changed_params.items():
+            assert param_name in param_name_to_type_hint, f"param name {param_name} does not exist"
+
+            field_type = param_name_to_type_hint[param_name]
+            value = _wrangle_type(param_name, value, field_type)
+            setattr(self, param_name, value)
 
     def overrides_from_cli(self):
         argv = sys.argv[1:]  # Skip the script name
@@ -90,9 +82,7 @@ class ConfigBase:
         ), "Got odd amount of space separated strings as CLI inputs. Must be even as '--key value' pairs"
         for i in range(0, len(argv), 2):
             key = argv[i]
-            assert key.startswith(
-                "--"
-            ), f"Invalid argument key: {key}. Argument keys must start with '--'."
+            assert key.startswith("--"), f"Invalid argument key: {key}. Argument keys must start with '--'."
             key = key.lstrip("-")
             value = argv[i + 1]
             self._override({key: value})
@@ -109,30 +99,58 @@ class ConfigBase:
         self._override(changed_params)
 
     def overrides_from_envs(self, env_prefix: str = "_param_") -> None:
+        param_name_to_type_hint = get_type_hints(self)
+
+        # Build a dictionary mapping lowercase names to actual case-sensitive names
+        lower_to_actual_case = {}
+        for param_name in param_name_to_type_hint:
+            lower_name = param_name.lower()
+            if lower_name in lower_to_actual_case:
+                conflicting_name = lower_to_actual_case[lower_name]
+                raise AssertionError(
+                    f"Parameter names '{param_name}' and '{conflicting_name}' conflict when considered in lowercase."
+                )
+            lower_to_actual_case[lower_name] = param_name
+
         changed_params = {}
         for key, value in os.environ.items():
-            if key.startswith(env_prefix):
-                changed_params[key[len(env_prefix) :]] = value
+            if not key.lower().startswith(env_prefix):
+                continue
+            param_key = key[len(env_prefix) :].lower()
+
+            if param_key in lower_to_actual_case:
+                actual_param_name = lower_to_actual_case[param_key]
+                changed_params[actual_param_name] = value
 
         self._override(changed_params)
 
-    def to_dict(self) -> Dict[str, Any]:
-        type_hints = get_type_hints(self.__class__)
-        return {field_name: getattr(self, field_name) for field_name in type_hints}
+    def to_dict(self) -> dict[str, Any]:
+        assert self._is_frozen is True, "'to_dict' only works on frozen params. please run freeze() first"
+        param_name_to_type_hint = get_type_hints(self)
+        return {field_name: getattr(self, field_name) for field_name in param_name_to_type_hint}
 
     def save_yaml(self, filepath: str) -> None:
+        assert self._is_frozen is True, "'save_yaml' only works on frozen params. please run freeze() first"
+
         with open(filepath, "w") as outfile:
             yaml.dump(self.to_dict(), outfile)
 
     def freeze(self) -> None:
+        param_name_to_type_hint = get_type_hints(self)
+        for field_name in param_name_to_type_hint:
+            # check empty field
+            if self._get_value(field_name) == EMPTY_FIELD:
+                raise AttributeError(f"{field_name} is empty and must be set before freeze()")
+
         self._is_frozen = True
 
     def __setattr__(self, key, value):
-        if getattr(self, "_is_frozen", False) and key in self.__dict__:
-            raise AttributeError(f"Cannot modify frozen attribute {key}")
+        # NOTE: in the init phase _is_frozen is not yet declared, but setattr is called when we make new vars, so we default to False here
+        assert getattr(self, "_is_frozen", False) is False, f"Params are frozen. Cannot modify attribute {key}"
         super().__setattr__(key, value)
 
-    def interpolate_values(self):
+    # TODO make it work
+    def _interpolate_values(self):
         self._before_interpolation = self.to_dict()
         self._after_interpolation = self._before_interpolation.copy()
 
@@ -147,45 +165,3 @@ class ConfigBase:
                 super().__setattr__(field_name, value)
 
         return self
-
-
-class SemSegTrainParamsScheme(ConfigBase):
-    data_dirs: Tuple[str, ...]
-    num_classes_without_bg: Optional[int] = None
-    dataset_name: Optional[str] = None
-    image_shape: Tuple[int, int] = (640, 640)
-    nn_encoder_name: str = "efficientnet-b0"
-    nn_default_encoder_weights: str = "imagenet"
-    save_dir_path: Optional[str] = None
-    num_epochs: int = 1000
-    train_batch_size: int = 12
-    val_batch_size: int = 36
-    validation_step_per_epochs: int = 1
-    init_lr: float = 1e-4
-    lr_scheduler_patience_in_validation_steps: int = 20
-    lr_scheduler_factor: float = 0.5
-    continue_train_dir_path: Optional[str] = None
-    continue_train_is_reset_to_init_lr: bool = False
-    test: str = "cvvfv"
-    test2: str = "[[test]]+gdgd"
-
-
-if __name__ == "__main__":
-    sys.argv = [
-        "script_name.py",
-        "--num_epochs",
-        "500",
-        "--num_classes_without_bg",
-        "3",
-    ]
-    config = SemSegTrainParamsScheme()
-
-    changes_cli = config.overrides_from_cli()
-    changes_yaml = config.overrides_from_yaml("config.yaml")
-    changes_env = config.overrides_from_envs()
-
-    config.save_yaml("merged_config.yaml")
-    config.freeze()
-
-    print(config.to_dict())
-    config.num_classes_without_bg = 7
