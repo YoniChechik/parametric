@@ -1,2 +1,2 @@
-# parametrize
+# parametric
 WIP

@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "parametrize"
+name = "parametric"
 version = "0.1.0"
 authors = [
   { name = "Yoni Chechik"}
@@ -14,7 +14,7 @@ license = { text = "MIT" }
 dependencies = []
 
 [project.urls]
-"Homepage" = "https://github.com/YoniChechik/parametrize"
+"Homepage" = "https://github.com/YoniChechik/parametric"
 
 [tool.setuptools]
-packages = ["parametrize"]
+packages = ["parametric"]
