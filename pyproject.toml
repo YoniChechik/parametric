@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parametrize"
+version = "0.1.0"
+authors = [
+  { name = "Yoni Chechik"}
+]
+description = "A simple example package for parameterization"
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = []
+
+[project.urls]
+"Homepage" = "https://github.com/YoniChechik/parametrize"
+
+[tool.setuptools]
+packages = ["parametrize"]
