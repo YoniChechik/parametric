@@ -21,7 +21,11 @@ jobs:
       name: release
       url: https://pypi.org/p/parametric
     permissions:
-      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+      # this permission is mandatory for trusted publishing in pypi
+      id-token: write 
+      # Give the default GITHUB_TOKEN write permission to commit and push the
+      # added or changed files to the repository.
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,11 +48,9 @@ jobs:
           echo "new_version=${new_version}" >> $GITHUB_OUTPUT
 
       - name: Commit version change
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git commit -am "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
-          git push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
 
       - name: Build package
         run: python -m build
