@@ -23,8 +23,8 @@ jobs:
     permissions:
       # this permission is mandatory for trusted publishing in pypi
       id-token: write 
-      # Give the default GITHUB_TOKEN write permission to commit and push the
-      # added or changed files to the repository.
+      # Give the default GITHUB_TOKEN write permission to commit and push changes.
+      # Used by both softprops/action-gh-release@v2 and stefanzweifel/git-auto-commit-action@v5
       contents: write
     steps:
       - name: Checkout repository
