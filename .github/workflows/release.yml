@@ -51,6 +51,7 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
+          tagging_message: "v${{ steps.update_pyproject.outputs.new_version }}"
 
       - name: Build package
         run: python -m build
