@@ -1,7 +1,17 @@
 name: Upload release to PyPI
 
 on:
-  push:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Type of release (patch, minor, major)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   pypi-publish:
@@ -23,6 +33,23 @@ jobs:
 
       - name: Install dependencies
         run: pip install build twine
+
+      - name: Update version
+        id: update_version
+        run: |
+          version=$(python -c "from toml import load; print(load(open('pyproject.toml'))['project']['version'])")
+          new_version=$(python -c "from semver import VersionInfo; print(VersionInfo.parse('${{ inputs.release_type }}')('${{ github.event.inputs.release_type }}'))")
+          echo "Current version: $version"
+          echo "New version: $new_version"
+          sed -i "s/version = \"$version\"/version = \"$new_version\"/" pyproject.toml
+          echo "::set-output name=new_version::$new_version"
+
+      - name: Commit version change
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git commit -am "Bump version to ${{ steps.update_version.outputs.new_version }}"
+          git push
 
       - name: Build package
         run: python -m build
