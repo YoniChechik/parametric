@@ -64,11 +64,10 @@ def update_pyproject(dependencies, release_type):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in ReleaseType.list():
-        print("Usage: update_pyproject.py <release_type>")
-        print(f"Available release types: {', '.join(ReleaseType.list())}")
-        sys.exit(1)
+        raise (f"Usage: update_pyproject.py <release_type>; Available release types: {', '.join(ReleaseType.list())}")
 
     release_type = sys.argv[1]
     deps = parse_requirements("requirements_prod.txt")
     new_version = update_pyproject(deps, release_type)
-    print(f"Updated pyproject.toml dependencies and version to {new_version}")
+    # used as the output of this script to get the version
+    print(f"{new_version}")
