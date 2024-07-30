@@ -69,6 +69,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     release_type = sys.argv[1]
-    deps = parse_requirements("requirements.txt")
+    deps = parse_requirements("requirements_prod.txt")
     new_version = update_pyproject(deps, release_type)
     print(f"Updated pyproject.toml dependencies and version to {new_version}")
