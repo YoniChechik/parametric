@@ -1,0 +1,28 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# cancel older jobs if a new one is pushed/pr'ed
+# from: https://stackoverflow.com/a/72408109/4879610
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check ruff lint
+        uses: chartboost/ruff-action@v1
+        with:
+          args: check --line-length=120
+      - name: Check ruff format
+        uses: chartboost/ruff-action@v1
+        with:
+          args: format --check --line-length=120
