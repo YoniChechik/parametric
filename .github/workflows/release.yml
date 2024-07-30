@@ -32,23 +32,22 @@ jobs:
           python-version: '3.x'  # Specify the Python version to use
 
       - name: Install dependencies
-        run: pip install build twine
-
-      - name: Update version
-        id: update_version
         run: |
-          version=$(python -c "from toml import load; print(load(open('pyproject.toml'))['project']['version'])")
-          new_version=$(python -c "from semver import VersionInfo; print(VersionInfo.parse('${{ inputs.release_type }}')('${{ github.event.inputs.release_type }}'))")
-          echo "Current version: $version"
-          echo "New version: $new_version"
-          sed -i "s/version = \"$version\"/version = \"$new_version\"/" pyproject.toml
+          python -m pip install --upgrade pip
+          pip install build twine
+          pip install -r requirements_release.txt
+
+      - name: Update pyproject.toml with requirements.txt and bump version
+        id: update_pyproject
+        run: |
+          new_version=$(python release_utils\update_pyproject.py ${{ github.event.inputs.release_type }})
           echo "::set-output name=new_version::$new_version"
 
       - name: Commit version change
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          git commit -am "Bump version to ${{ steps.update_version.outputs.new_version }}"
+          git commit -am "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
           git push
 
       - name: Build package
