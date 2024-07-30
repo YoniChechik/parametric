@@ -1,16 +1,9 @@
 import os
 import sys
+from types import UnionType
 from typing import Any, Tuple, Union, get_args, get_origin, get_type_hints
 
 import yaml
-
-# NOTE: UnionType exists only from python 3.10
-if sys.version_info[:2] == (3, 9):
-    from typing import Union
-
-    UnionType = Union
-else:
-    from types import UnionType
 
 # Immutable types set
 BASE_TYPES = (int, float, bool, str)
