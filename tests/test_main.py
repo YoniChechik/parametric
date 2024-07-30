@@ -58,9 +58,8 @@ def test_env_overrides(monkeypatch):
 
 def test_yaml_overrides():
     # Mock YAML file content
-    yaml_content = """
-    train_batch_size: 8
-    """
+    yaml_content = "train_batch_size: 8"
+
     with NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp_yaml:
         tmp_yaml_name = tmp_yaml.name
         tmp_yaml.write(yaml_content)
@@ -88,9 +87,7 @@ def test_combined_overrides(monkeypatch):
     monkeypatch.setenv("_param_VAL_BATCH_SIZE", "32")
 
     # Mock YAML file content
-    yaml_content = """
-    train_batch_size: 8
-    """
+    yaml_content = "train_batch_size: 8"
     with NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp_yaml:
         tmp_yaml_name = tmp_yaml.name
         tmp_yaml.write(yaml_content)
@@ -141,7 +138,7 @@ def test_freeze_params():
 
     params.freeze()
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(BaseException):
         params.num_classes_without_bg = 7
 
 

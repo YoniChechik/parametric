@@ -55,7 +55,7 @@ class BaseScheme:
         for field_name, field_type in param_name_to_type_hint.items():
             given_value = self._get_value(field_name)
 
-            # dont work on empty field
+            # don't work on empty field
             if given_value == EMPTY_FIELD:
                 continue
 
@@ -69,7 +69,8 @@ class BaseScheme:
     def _override(self, changed_params: dict[str, Any]):
         param_name_to_type_hint = get_type_hints(self)
         for param_name, value in changed_params.items():
-            assert param_name in param_name_to_type_hint, f"param name {param_name} does not exist"
+            if param_name not in param_name_to_type_hint:
+                raise RuntimeError(f"param name {param_name} does not exist")
 
             field_type = param_name_to_type_hint[param_name]
             value = _wrangle_type(param_name, value, field_type)
@@ -77,12 +78,14 @@ class BaseScheme:
 
     def overrides_from_cli(self):
         argv = sys.argv[1:]  # Skip the script name
-        assert (
-            len(argv) % 2 == 0
-        ), "Got odd amount of space separated strings as CLI inputs. Must be even as '--key value' pairs"
+        if len(argv) % 2 != 0:
+            raise RuntimeError(
+                "Got odd amount of space separated strings as CLI inputs. Must be even as '--key value' pairs"
+            )
         for i in range(0, len(argv), 2):
             key = argv[i]
-            assert key.startswith("--"), f"Invalid argument key: {key}. Argument keys must start with '--'."
+            if not key.startswith("--"):
+                raise RuntimeError(f"Invalid argument key: {key}. Argument keys must start with '--'.")
             key = key.lstrip("-")
             value = argv[i + 1]
             self._override({key: value})
@@ -107,7 +110,7 @@ class BaseScheme:
             lower_name = param_name.lower()
             if lower_name in lower_to_actual_case:
                 conflicting_name = lower_to_actual_case[lower_name]
-                raise AssertionError(
+                raise RuntimeError(
                     f"Parameter names '{param_name}' and '{conflicting_name}' conflict when considered in lowercase."
                 )
             lower_to_actual_case[lower_name] = param_name
@@ -125,12 +128,14 @@ class BaseScheme:
         self._override(changed_params)
 
     def to_dict(self) -> dict[str, Any]:
-        assert self._is_frozen is True, "'to_dict' only works on frozen params. please run freeze() first"
+        if not self._is_frozen:
+            raise RuntimeError("'to_dict' only works on frozen params. please run freeze() first")
         param_name_to_type_hint = get_type_hints(self)
         return {field_name: getattr(self, field_name) for field_name in param_name_to_type_hint}
 
     def save_yaml(self, filepath: str) -> None:
-        assert self._is_frozen is True, "'save_yaml' only works on frozen params. please run freeze() first"
+        if not self._is_frozen:
+            raise RuntimeError("'save_yaml' only works on frozen params. please run freeze() first")
 
         with open(filepath, "w") as outfile:
             yaml.dump(self.to_dict(), outfile)
@@ -140,28 +145,12 @@ class BaseScheme:
         for field_name in param_name_to_type_hint:
             # check empty field
             if self._get_value(field_name) == EMPTY_FIELD:
-                raise AttributeError(f"{field_name} is empty and must be set before freeze()")
+                raise ValueError(f"{field_name} is empty and must be set before freeze()")
 
         self._is_frozen = True
 
     def __setattr__(self, key, value):
         # NOTE: in the init phase _is_frozen is not yet declared, but setattr is called when we make new vars, so we default to False here
-        assert getattr(self, "_is_frozen", False) is False, f"Params are frozen. Cannot modify attribute {key}"
+        if getattr(self, "_is_frozen", False):
+            raise AttributeError(f"Params are frozen. Cannot modify attribute {key}")
         super().__setattr__(key, value)
-
-    # TODO make it work
-    def _interpolate_values(self):
-        self._before_interpolation = self.to_dict()
-        self._after_interpolation = self._before_interpolation.copy()
-
-        for field_name, value in self._after_interpolation.items():
-            if isinstance(value, str) and "[[" in value and "]]" in value:
-                for key, val in self._after_interpolation.items():
-                    if isinstance(val, str):
-                        placeholder = f"[[{key}]]"
-                        if placeholder in value:
-                            value = value.replace(placeholder, str(val))
-                self._after_interpolation[field_name] = value
-                super().__setattr__(field_name, value)
-
-        return self
