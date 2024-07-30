@@ -40,7 +40,7 @@ jobs:
       - name: Update pyproject.toml with requirements.txt and bump version
         id: update_pyproject
         run: |
-          new_version=$(python release_utils\update_pyproject.py ${{ github.event.inputs.release_type }})
+          new_version=$(python release_utils/update_pyproject.py ${{ github.event.inputs.release_type }})
           echo "::set-output name=new_version::$new_version"
 
       - name: Commit version change
