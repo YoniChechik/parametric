@@ -36,12 +36,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install build twine
           pip install -r requirements_release.txt
-
+ 
       - name: Update pyproject.toml with requirements.txt and bump version
         id: update_pyproject
         run: |
-          new_version=$(python release_utils/update_pyproject.py ${{ github.event.inputs.release_type }})
-          echo "::set-output name=new_version::$new_version"
+          new_version=$(python update_pyproject.py ${{ github.event.inputs.release_type }})
+          echo "new_version=${new_version}" >> $GITHUB_OUTPUT
 
       - name: Commit version change
         run: |
