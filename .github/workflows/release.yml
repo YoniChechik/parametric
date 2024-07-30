@@ -58,6 +58,8 @@ jobs:
 
       - name: Release
         uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.update_pyproject.outputs.new_version }}"
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
