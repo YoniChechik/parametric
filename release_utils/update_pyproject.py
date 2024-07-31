@@ -67,7 +67,7 @@ if __name__ == "__main__":
         raise (f"Usage: update_pyproject.py <release_type>; Available release types: {', '.join(ReleaseType.list())}")
 
     release_type = sys.argv[1]
-    deps = parse_requirements("requirements_prod.txt")
+    deps = parse_requirements("requirements.txt")
     new_version = update_pyproject(deps, release_type)
     # used as the output of this script to get the version
     print(f"{new_version}")
