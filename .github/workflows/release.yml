@@ -18,6 +18,7 @@ jobs:
     name: Upload release to PyPI
     runs-on: ubuntu-latest
     environment:
+      # both below are mandatory for pypi publishing
       name: release
       url: https://pypi.org/p/parametric
     permissions:
@@ -33,7 +34,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'  # Specify the Python version to use
+          python-version: '3.x' 
 
       - name: Install dependencies
         # build and twine for "build package" step
