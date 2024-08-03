@@ -1,12 +1,13 @@
 import os
 import sys
+from pathlib import Path
 from types import UnionType
 from typing import Any, Tuple, Union, get_args, get_origin, get_type_hints
 
 import yaml
 
 # Immutable types set
-BASE_TYPES = (int, float, bool, str)
+BASE_TYPES = (int, float, bool, str, bytes, complex, Path)
 
 EMPTY_FIELD = "__parametric_empty_field"
 
@@ -66,7 +67,7 @@ class BaseScheme:
         given_value = getattr(self, field_name, EMPTY_FIELD)
         return given_value
 
-    def _override(self, changed_params: dict[str, Any]):
+    def override_from_dict(self, changed_params: dict[str, Any]):
         param_name_to_type_hint = get_type_hints(self)
         for param_name, value in changed_params.items():
             if param_name not in param_name_to_type_hint:
@@ -76,7 +77,7 @@ class BaseScheme:
             value = _wrangle_type(param_name, value, field_type)
             setattr(self, param_name, value)
 
-    def overrides_from_cli(self):
+    def override_from_cli(self):
         argv = sys.argv[1:]  # Skip the script name
         if len(argv) % 2 != 0:
             raise RuntimeError(
@@ -88,9 +89,9 @@ class BaseScheme:
                 raise RuntimeError(f"Invalid argument key: {key}. Argument keys must start with '--'.")
             key = key.lstrip("-")
             value = argv[i + 1]
-            self._override({key: value})
+            self.override_from_dict({key: value})
 
-    def overrides_from_yaml(self, filepath: str) -> None:
+    def override_from_yaml(self, filepath: str) -> None:
         if not os.path.exists(filepath):
             return
 
@@ -99,9 +100,9 @@ class BaseScheme:
         if changed_params is None:
             return
 
-        self._override(changed_params)
+        self.override_from_dict(changed_params)
 
-    def overrides_from_envs(self, env_prefix: str = "_param_") -> None:
+    def override_from_envs(self, env_prefix: str = "_param_") -> None:
         param_name_to_type_hint = get_type_hints(self)
 
         # Build a dictionary mapping lowercase names to actual case-sensitive names
@@ -125,7 +126,7 @@ class BaseScheme:
                 actual_param_name = lower_to_actual_case[param_key]
                 changed_params[actual_param_name] = value
 
-        self._override(changed_params)
+        self.override_from_dict(changed_params)
 
     def to_dict(self) -> dict[str, Any]:
         if not self._is_frozen:
