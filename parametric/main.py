@@ -7,9 +7,9 @@ from typing import Any, Tuple, Union, get_args, get_origin, get_type_hints
 import yaml
 
 # Immutable types set
-BASE_TYPES = (int, float, bool, str, bytes, complex, Path, type(None))
+_BASE_TYPES = (int, float, bool, str, bytes, complex, Path, type(None))
 
-EMPTY_FIELD = "__parametric_empty_field"
+_EMPTY_FIELD = "__parametric_empty_field"
 
 
 def _wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, bool]:
@@ -18,7 +18,16 @@ def _wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, b
 
     origin_type = get_origin(target_type)
 
-    if target_type in BASE_TYPES:
+    # check for empty NEW tuple (without explanation what inside like tuple[int])
+    # Note only check the new tuple. old tuple is checked in the if tuple type section
+    if target_type is tuple and origin_type is None:
+        raise ValueError(f"Type hint for {field_name} cannot be 'tuple' without specifying element types")
+
+    # check for empty Union (without explanation what inside like Union[int,str])
+    if target_type in {Union} and origin_type is None:
+        raise ValueError(f"Type hint for {field_name} cannot be 'union' without specifying element types")
+
+    if target_type in _BASE_TYPES:
         if isinstance(value, target_type):
             return value, False  # Success, no coercion needed
         try:
@@ -27,22 +36,27 @@ def _wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, b
             raise ValueError(f"Cannot convert {value} to {target_type}")
 
     if origin_type in {Union, UnionType}:
-        best_result = EMPTY_FIELD
+        best_result = _EMPTY_FIELD
         for inner_type in get_args(target_type):
             try:
                 result, coerced = _wrangle_type(field_name, value, inner_type)
                 if not coerced:
                     return result, False  # Return immediately if no coercion was needed
-                if best_result == EMPTY_FIELD or coerced:
+                if best_result == _EMPTY_FIELD or coerced:
                     best_result = result
             except (ValueError, TypeError):
                 continue
-        if best_result != EMPTY_FIELD:
+        if best_result != _EMPTY_FIELD:
             return best_result, True  # Return the best result, noting that coercion was needed
         raise ValueError(f"Cannot convert {value} to any of the types in {target_type}")
 
     elif origin_type in {tuple, Tuple}:
         elem_types = get_args(target_type)
+
+        # check for empty OLD Tuple (without explanation what inside like Tuple[int])
+        if len(elem_types) == 0:
+            raise ValueError(f"Type hint for {field_name} cannot be 'tuple' without specifying element types")
+
         if elem_types[-1] is Ellipsis:
             elem_type = elem_types[0]
             results = [_wrangle_type(field_name, v, elem_type) for v in value]
@@ -54,7 +68,7 @@ def _wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, b
         return tuple(r[0] for r in results), coerced
 
     else:
-        raise ValueError(f"Field {field_name} should have only this immutable typehints: tuple, {BASE_TYPES}")
+        raise ValueError(f"Field {field_name} should have only this immutable typehints: tuple, {_BASE_TYPES}")
 
 
 class BaseScheme:
@@ -69,14 +83,14 @@ class BaseScheme:
             given_value = self._get_value(field_name)
 
             # don't work on empty field
-            if given_value == EMPTY_FIELD:
+            if given_value == _EMPTY_FIELD:
                 continue
 
             converted_value, _ = _wrangle_type(field_name, given_value, field_type)
             setattr(self, field_name, converted_value)
 
     def _get_value(self, field_name):
-        given_value = getattr(self, field_name, EMPTY_FIELD)
+        given_value = getattr(self, field_name, _EMPTY_FIELD)
         return given_value
 
     def override_from_dict(self, changed_params: dict[str, Any]):
@@ -157,7 +171,7 @@ class BaseScheme:
         param_name_to_type_hint = get_type_hints(self)
         for field_name in param_name_to_type_hint:
             # check empty field
-            if self._get_value(field_name) == EMPTY_FIELD:
+            if self._get_value(field_name) == _EMPTY_FIELD:
                 raise ValueError(f"{field_name} is empty and must be set before freeze()")
 
         self._is_frozen = True

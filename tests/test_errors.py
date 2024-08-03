@@ -1,6 +1,8 @@
+from typing import Tuple, Union
+
 import pytest
 
-from parametric.main import BaseScheme
+from parametric.main import BaseScheme, _wrangle_type
 
 
 class MyParamsSchemeNew(BaseScheme):
@@ -54,6 +56,15 @@ def test_change_after_freeze():
 
     with pytest.raises(BaseException):
         params.nested_tuple = ((2, "xxx"), (2, "xxx"))
+
+
+def test_invalid_tuple_typehint():
+    with pytest.raises(ValueError):
+        _wrangle_type("test_field", (1, 2), tuple)
+    with pytest.raises(ValueError):
+        _wrangle_type("test_field", (1, 2), Tuple)
+    with pytest.raises(ValueError):
+        _wrangle_type("test_field", 1, Union)
 
 
 if __name__ == "__main__":
