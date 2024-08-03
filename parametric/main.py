@@ -7,42 +7,54 @@ from typing import Any, Tuple, Union, get_args, get_origin, get_type_hints
 import yaml
 
 # Immutable types set
-BASE_TYPES = (int, float, bool, str, bytes, complex, Path)
+BASE_TYPES = (int, float, bool, str, bytes, complex, Path, type(None))
 
 EMPTY_FIELD = "__parametric_empty_field"
 
 
-def _wrangle_type(field_name: str, value: Any, target_type: Any) -> Any:
+def _wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, bool]:
     if target_type == Any:
         raise ValueError(f"Type `Any` is not allowed, cannot convert '{field_name}'")
 
     origin_type = get_origin(target_type)
+
+    if target_type in BASE_TYPES:
+        if isinstance(value, target_type):
+            return value, False  # Success, no coercion needed
+        try:
+            return target_type(value), True  # Success, coercion successful
+        except (ValueError, TypeError):
+            raise ValueError(f"Cannot convert {value} to {target_type}")
+
     if origin_type in {Union, UnionType}:
-        # Test that at least one conversion works
+        best_result = EMPTY_FIELD
         for inner_type in get_args(target_type):
             try:
-                return _wrangle_type(field_name, value, inner_type)
+                result, coerced = _wrangle_type(field_name, value, inner_type)
+                if not coerced:
+                    return result, False  # Return immediately if no coercion was needed
+                if best_result == EMPTY_FIELD or coerced:
+                    best_result = result
             except (ValueError, TypeError):
                 continue
+        if best_result != EMPTY_FIELD:
+            return best_result, True  # Return the best result, noting that coercion was needed
         raise ValueError(f"Cannot convert {value} to any of the types in {target_type}")
+
     elif origin_type in {tuple, Tuple}:
         elem_types = get_args(target_type)
         if elem_types[-1] is Ellipsis:
             elem_type = elem_types[0]
-            return tuple(_wrangle_type(field_name, v, elem_type) for v in value)
+            results = [_wrangle_type(field_name, v, elem_type) for v in value]
         else:
-            return tuple(_wrangle_type(field_name, v, t) for v, t in zip(value, elem_types))
-    elif target_type is type(None):
-        if value is not None:
-            raise ValueError(f"Cannot convert {value} to {target_type}")
-        return None
-    elif target_type in BASE_TYPES:
-        try:
-            return target_type(value)
-        except (ValueError, TypeError):
-            raise ValueError(f"Cannot convert {value} to {target_type}")
+            results = [_wrangle_type(field_name, v, t) for v, t in zip(value, elem_types)]
+
+        # Determine if any element was coerced
+        coerced = any(r[1] for r in results)
+        return tuple(r[0] for r in results), coerced
+
     else:
-        raise ValueError(f"Field {field_name} should have only this immutable typehints: None, tuple, {BASE_TYPES}")
+        raise ValueError(f"Field {field_name} should have only this immutable typehints: tuple, {BASE_TYPES}")
 
 
 class BaseScheme:
@@ -60,7 +72,7 @@ class BaseScheme:
             if given_value == EMPTY_FIELD:
                 continue
 
-            converted_value = _wrangle_type(field_name, given_value, field_type)
+            converted_value, _ = _wrangle_type(field_name, given_value, field_type)
             setattr(self, field_name, converted_value)
 
     def _get_value(self, field_name):
@@ -74,7 +86,7 @@ class BaseScheme:
                 raise RuntimeError(f"param name {param_name} does not exist")
 
             field_type = param_name_to_type_hint[param_name]
-            value = _wrangle_type(param_name, value, field_type)
+            value, _ = _wrangle_type(param_name, value, field_type)
             setattr(self, param_name, value)
 
     def override_from_cli(self):

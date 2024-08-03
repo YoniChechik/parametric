@@ -45,12 +45,12 @@ def test_save_yaml():
     os.remove(tmp_yaml_name)
 
     expected_yaml = (
-        "continue_train_dir_path: None\n"
+        "continue_train_dir_path: null\n"
         "continue_train_is_reset_to_init_lr: false\n"
         "data_dirs: !!python/tuple\n"
         "- x\n"
         "- Y\n"
-        "dataset_name: None\n"
+        "dataset_name: null\n"
         "image_shape: !!python/tuple\n"
         "- 640\n"
         "- 640\n"
@@ -61,7 +61,7 @@ def test_save_yaml():
         "nn_encoder_name: efficientnet-b0\n"
         "num_classes_without_bg: 3\n"
         "num_epochs: 500\n"
-        "save_dir_path: None\n"
+        "save_dir_path: null\n"
         "train_batch_size: 8\n"
         "val_batch_size: 32\n"
         "validation_step_per_epochs: 1\n"
