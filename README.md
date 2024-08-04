@@ -130,7 +130,7 @@ The main difference between `parametric` and `pydantic` lies in their design phi
 - **Automatic Changelog Generation:** Automate the creation of changelogs for each release.
 - **Python 3.9 Compatibility:** Extend support to Python 3.9.
 - **Nested BaseSchemes:** Support for nested `BaseScheme` objects.
-- **Additional Type Support:** Add support for `datetime` objects, enums, and literals.
+- **Additional Type Support:** Add support for `datetime` objects
 
 ## Contributing
 
