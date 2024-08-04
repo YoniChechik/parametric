@@ -2,7 +2,7 @@ from typing import Tuple, Union
 
 import pytest
 
-from parametric.main import BaseScheme, _wrangle_type
+from parametric.main import BaseScheme, wrangle_type
 
 
 class MyParamsSchemeNew(BaseScheme):
@@ -60,11 +60,11 @@ def test_change_after_freeze():
 
 def test_invalid_tuple_typehint():
     with pytest.raises(ValueError):
-        _wrangle_type("test_field", (1, 2), tuple)
+        wrangle_type("test_field", (1, 2), tuple)
     with pytest.raises(ValueError):
-        _wrangle_type("test_field", (1, 2), Tuple)
+        wrangle_type("test_field", (1, 2), Tuple)
     with pytest.raises(ValueError):
-        _wrangle_type("test_field", 1, Union)
+        wrangle_type("test_field", 1, Union)
 
 
 if __name__ == "__main__":
