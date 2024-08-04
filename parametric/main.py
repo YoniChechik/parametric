@@ -65,7 +65,7 @@ def _wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, b
 
     else:
         raise ValueError(
-            f"Field {field_name} should have only this immutable typehints: tuple, {_IMMUTABLE_BASE_TYPES}"
+            f"Field {field_name} should have only this immutable typehints: tuple, {', '.join(t.__name__ for t in _IMMUTABLE_BASE_TYPES)}"
         )
 
 
