@@ -6,8 +6,7 @@ from typing import Any, Tuple, Union, get_args, get_origin, get_type_hints
 
 import yaml
 
-# Immutable types set
-_BASE_TYPES = (int, float, bool, str, bytes, complex, Path, type(None))
+_IMMUTABLE_BASE_TYPES = (int, float, bool, str, bytes, complex, Path, type(None))
 
 _EMPTY_FIELD = "__parametric_empty_field"
 
@@ -16,18 +15,7 @@ def _wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, b
     if target_type == Any:
         raise ValueError(f"Type `Any` is not allowed, cannot convert '{field_name}'")
 
-    origin_type = get_origin(target_type)
-
-    # check for empty NEW tuple (without explanation what inside like tuple[int])
-    # Note only check the new tuple. old tuple is checked in the if tuple type section
-    if target_type is tuple and origin_type is None:
-        raise ValueError(f"Type hint for {field_name} cannot be 'tuple' without specifying element types")
-
-    # check for empty Union (without explanation what inside like Union[int,str])
-    if target_type in {Union} and origin_type is None:
-        raise ValueError(f"Type hint for {field_name} cannot be 'union' without specifying element types")
-
-    if target_type in _BASE_TYPES:
+    if target_type in _IMMUTABLE_BASE_TYPES:
         if isinstance(value, target_type):
             return value, False  # Success, no coercion needed
         try:
@@ -35,9 +23,23 @@ def _wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, b
         except (ValueError, TypeError):
             raise ValueError(f"Cannot convert {value} to {target_type}")
 
+    # ===== work on complex types
+    origin_type = get_origin(target_type)
+    inner_types = get_args(target_type)
+
+    # check for empty Union (without explanation what inside like Union[int,str])
+    if target_type is Union and origin_type is None:
+        raise ValueError(f"Type hint for {field_name} cannot be 'Union' without specifying element types")
+    # check for empty NEW tuple (without explanation what inside like tuple[int])
+    if target_type is tuple and origin_type is None:
+        raise ValueError(f"Type hint for {field_name} cannot be 'tuple' without specifying element types")
+    # check for empty OLD Tuple (without explanation what inside like Tuple[int])
+    if target_type is Tuple and len(inner_types) == 0:
+        raise ValueError(f"Type hint for {field_name} cannot be 'Tuple' without specifying element types")
+
     if origin_type in {Union, UnionType}:
         best_result = _EMPTY_FIELD
-        for inner_type in get_args(target_type):
+        for inner_type in inner_types:
             try:
                 result, coerced = _wrangle_type(field_name, value, inner_type)
                 if not coerced:
@@ -51,30 +53,24 @@ def _wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, b
         raise ValueError(f"Cannot convert {value} to any of the types in {target_type}")
 
     elif origin_type in {tuple, Tuple}:
-        elem_types = get_args(target_type)
-
-        # check for empty OLD Tuple (without explanation what inside like Tuple[int])
-        if len(elem_types) == 0:
-            raise ValueError(f"Type hint for {field_name} cannot be 'tuple' without specifying element types")
-
-        if elem_types[-1] is Ellipsis:
-            elem_type = elem_types[0]
+        if inner_types[-1] is Ellipsis:
+            elem_type = inner_types[0]
             results = [_wrangle_type(field_name, v, elem_type) for v in value]
         else:
-            results = [_wrangle_type(field_name, v, t) for v, t in zip(value, elem_types)]
+            results = [_wrangle_type(field_name, v, t) for v, t in zip(value, inner_types)]
 
         # Determine if any element was coerced
         coerced = any(r[1] for r in results)
         return tuple(r[0] for r in results), coerced
 
     else:
-        raise ValueError(f"Field {field_name} should have only this immutable typehints: tuple, {_BASE_TYPES}")
+        raise ValueError(
+            f"Field {field_name} should have only this immutable typehints: tuple, {_IMMUTABLE_BASE_TYPES}"
+        )
 
 
 class BaseScheme:
     def __init__(self):
-        self._before_interpolation = {}
-        self._after_interpolation = {}
         self._is_frozen = False
 
         # ==== convert all on init
