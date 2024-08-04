@@ -23,9 +23,9 @@ pip install parametric
 Here's a basic example to illustrate how to use `parametric`:
 
 ```python
-from parametric import BaseScheme
+from parametric import BaseParams
 
-class MyParamsScheme(BaseScheme):
+class MyParams(BaseParams):
     data_dirs: tuple[str, ...]
     num_classes_without_bg: int | None = None
     dataset_name: str | None = None
@@ -36,7 +36,7 @@ class MyParamsScheme(BaseScheme):
     train_batch_size: int = 12
     val_batch_size: int = 36
 
-params = MyParamsScheme()
+params = MyParams()
 params.data_dirs = ("path/to/data",)
 params.num_classes_without_bg = 3
 params.freeze()  # Freeze the parameters, making them immutable
@@ -50,12 +50,12 @@ params.freeze()  # Freeze the parameters, making them immutable
 
 ```python
 import sys
-from parametric import BaseScheme
+from parametric import BaseParams
 
-class MyParamsScheme(BaseScheme):
+class MyParams(BaseParams):
     num_epochs: int = 1000
 
-params = MyParamsScheme()
+params = MyParams()
 params.override_from_cli()
 params.freeze()
 ```
@@ -70,12 +70,12 @@ python script.py --num_epochs 500
 
 ```python
 import os
-from parametric import BaseScheme
+from parametric import BaseParams
 
-class MyParamsScheme(BaseScheme):
+class MyParams(BaseParams):
     val_batch_size: int = 36
 
-params = MyParamsScheme()
+params = MyParams()
 params.override_from_envs(env_prefix="_param_")
 params.freeze()
 ```
@@ -89,12 +89,12 @@ export _param_val_batch_size=32
 ### 3. Override from YAML File
 
 ```python
-from parametric import BaseScheme
+from parametric import BaseParams
 
-class MyParamsScheme(BaseScheme):
+class MyParams(BaseParams):
     train_batch_size: int = 12
 
-params = MyParamsScheme()
+params = MyParams()
 params.override_from_yaml("config.yaml")
 params.freeze()
 ```
@@ -108,12 +108,12 @@ train_batch_size: 8
 ### 4. Override from Dictionary
 
 ```python
-from parametric import BaseScheme
+from parametric import BaseParams
 
-class MyParamsScheme(BaseScheme):
+class MyParams(BaseParams):
     num_epochs: int = 1000
 
-params = MyParamsScheme()
+params = MyParams()
 params.override_from_dict({"num_epochs": 500})
 params.freeze()
 ```
@@ -129,7 +129,7 @@ The main difference between `parametric` and `pydantic` lies in their design phi
 
 - **Automatic Changelog Generation:** Automate the creation of changelogs for each release.
 - **Python 3.9 Compatibility:** Extend support to Python 3.9.
-- **Nested BaseSchemes:** Support for nested `BaseScheme` objects.
+- **Nested BaseParamss:** Support for nested `BaseParams` objects.
 - **Additional Type Support:** Add support for `datetime` objects
 
 ## Contributing

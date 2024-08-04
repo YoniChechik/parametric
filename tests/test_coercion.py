@@ -1,6 +1,6 @@
 from typing import Union
 
-from parametric.main import wrangle_type
+from parametric._base_params import wrangle_type
 
 
 def test_union_type_prefer_no_coercion():

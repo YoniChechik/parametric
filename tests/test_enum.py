@@ -2,7 +2,7 @@ from enum import Enum, IntEnum, StrEnum
 
 import pytest
 
-from parametric import BaseScheme
+from parametric import BaseParams
 
 
 # Define Enums
@@ -24,8 +24,8 @@ class Role(StrEnum):
     GUEST = "guest"
 
 
-# Define MyParamsScheme class
-class MyParamsScheme(BaseScheme):
+# Define MyParams class
+class MyParams(BaseParams):
     color: Color = Color.RED
     status_code: StatusCode = StatusCode.SUCCESS
     user_role: Role = Role.USER
@@ -33,7 +33,7 @@ class MyParamsScheme(BaseScheme):
 
 # Test case for to_dict method
 def test_different_enums():
-    params = MyParamsScheme()
+    params = MyParams()
 
     expected_dict = {
         "color": "green",

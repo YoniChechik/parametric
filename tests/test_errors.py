@@ -2,10 +2,10 @@ from typing import Tuple, Union
 
 import pytest
 
-from parametric.main import BaseScheme, wrangle_type
+from parametric._base_params import BaseParams, wrangle_type
 
 
-class MyParamsSchemeNew(BaseScheme):
+class MyParamsNew(BaseParams):
     nested_tuple: tuple[tuple[int, str], tuple[float, str]] = ((1, "a"), (3.14, "b"))
     optional_tuple: tuple[int, int, int] | None = (1, 2, 3)
     union_field: int | float = 42
@@ -13,7 +13,7 @@ class MyParamsSchemeNew(BaseScheme):
 
 
 def test_invalid_overrides():
-    params = MyParamsSchemeNew()
+    params = MyParamsNew()
 
     # Attempt to override with invalid type should raise an error
     with pytest.raises(ValueError):
@@ -30,7 +30,7 @@ def test_invalid_overrides():
 
 
 def test_to_dict_without_freeze():
-    params = MyParamsSchemeNew()
+    params = MyParamsNew()
 
     # Attempt to call to_dict without freezing should raise an error
     with pytest.raises(RuntimeError):
@@ -38,7 +38,7 @@ def test_to_dict_without_freeze():
 
 
 def test_empty_field_error_on_freeze():
-    class CustomParamsScheme(BaseScheme):
+    class CustomParamsScheme(BaseParams):
         mandatory_field: int
 
     params = CustomParamsScheme()
@@ -49,7 +49,7 @@ def test_empty_field_error_on_freeze():
 
 
 def test_change_after_freeze():
-    params = MyParamsSchemeNew()
+    params = MyParamsNew()
     params.nested_tuple = ((1, "c"), (3.14, "d"))
 
     params.freeze()

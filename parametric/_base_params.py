@@ -4,11 +4,11 @@ from typing import Any, get_type_hints
 
 import yaml
 
-from parametric._const import _EMPTY_FIELD
+from parametric._const import EMPTY_FIELD
 from parametric._wrangle_type import wrangle_type
 
 
-class BaseScheme:
+class BaseParams:
     def __init__(self):
         self._is_frozen = False
 
@@ -18,14 +18,14 @@ class BaseScheme:
             given_value = self._get_value(field_name)
 
             # don't work on empty field
-            if given_value == _EMPTY_FIELD:
+            if given_value == EMPTY_FIELD:
                 continue
 
             converted_value, _ = wrangle_type(field_name, given_value, field_type)
             setattr(self, field_name, converted_value)
 
     def _get_value(self, field_name):
-        given_value = getattr(self, field_name, _EMPTY_FIELD)
+        given_value = getattr(self, field_name, EMPTY_FIELD)
         return given_value
 
     def override_from_dict(self, changed_params: dict[str, Any]):
@@ -106,7 +106,7 @@ class BaseScheme:
         param_name_to_type_hint = get_type_hints(self)
         for field_name in param_name_to_type_hint:
             # check empty field
-            if self._get_value(field_name) == _EMPTY_FIELD:
+            if self._get_value(field_name) == EMPTY_FIELD:
                 raise ValueError(f"{field_name} is empty and must be set before freeze()")
 
         self._is_frozen = True

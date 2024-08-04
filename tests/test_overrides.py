@@ -6,10 +6,10 @@ from typing import Literal
 
 import pytest
 
-from parametric import BaseScheme
+from parametric import BaseParams
 
 
-class MyParamsScheme(BaseScheme):
+class MyParams(BaseParams):
     num_classes_without_bg: int = 5
     scheduler_name: str | None = None
     image_shape: tuple[int, int] = (640, 480)
@@ -29,7 +29,7 @@ def test_cli_overrides(monkeypatch):
 
     monkeypatch.setattr(sys, "argv", test_args)
 
-    params = MyParamsScheme()
+    params = MyParams()
     params.override_from_cli()
 
     assert params.num_classes_without_bg == 3
@@ -39,7 +39,7 @@ def test_env_overrides(monkeypatch):
     # Setup mock environment variables
     monkeypatch.setenv("_param_dataset_name", "b")
 
-    params = MyParamsScheme()
+    params = MyParams()
     params.override_from_envs()
 
     assert params.dataset_name == "b"
@@ -53,7 +53,7 @@ def test_yaml_overrides():
         tmp_yaml_name = tmp_yaml.name
         tmp_yaml.write(yaml_content)
 
-    params = MyParamsScheme()
+    params = MyParams()
     params.override_from_yaml(tmp_yaml_name)
 
     assert params.init_lr == 0.001
@@ -75,7 +75,7 @@ def test_combined_overrides(monkeypatch):
         tmp_yaml_name = tmp_yaml.name
         tmp_yaml.write(yaml_content)
 
-    params = MyParamsScheme()
+    params = MyParams()
     params.override_from_cli()
     params.override_from_yaml(tmp_yaml_name)
     params.override_from_envs()

@@ -3,10 +3,10 @@ from tempfile import NamedTemporaryFile
 
 import pytest
 
-from parametric import BaseScheme
+from parametric import BaseParams
 
 
-class MyParamsScheme(BaseScheme):
+class MyParams(BaseParams):
     data_dirs: tuple[str, ...]
     num_classes_without_bg: int | None = None
     dataset_name: str | None = None
@@ -26,7 +26,7 @@ class MyParamsScheme(BaseScheme):
 
 
 def test_save_yaml():
-    params = MyParamsScheme()
+    params = MyParams()
     params.num_epochs = 500
     params.num_classes_without_bg = 3
     params.train_batch_size = 8
@@ -71,7 +71,7 @@ def test_save_yaml():
 
 
 def test_to_dict():
-    params = MyParamsScheme()
+    params = MyParams()
     params.num_epochs = 500
     params.num_classes_without_bg = 3
     params.train_batch_size = 8
