@@ -17,8 +17,8 @@ on:
           - major
 
 jobs:
-  update-version:
-    name: Update Version in Branch
+  build-release-pr:
+    name: Build Release PR
     runs-on: ubuntu-latest
     permissions:
       # Give the default GITHUB_TOKEN write permission to commit and push changes.
@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history so that git log works correctly
 
       - name: Set up Python
         uses: actions/setup-python@v5
