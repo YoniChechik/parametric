@@ -44,6 +44,7 @@ jobs:
       - name: Create a Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           branch: version-update-${{ github.event.inputs.release_type }}
           title: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
           body: "Automatic version bump to ${{ steps.update_pyproject.outputs.new_version }}."
