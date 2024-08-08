@@ -44,10 +44,12 @@ jobs:
       - name: Build package
         run: python -m build
 
-      - name: Extract Release Notes
-        id: extract_notes
-        run: |
-            counter=0
+      - name: Release and Tag
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.get_new_version.outputs.new_version }}"
+          body: |
+            $(counter=0
             release_notes=""
             while IFS= read -r line; do
               if [[ $line =~ ^##\  ]]; then
@@ -60,15 +62,7 @@ jobs:
               fi
             done < CHANGELOG.md
 
-            # Safely handle multi-line output for GITHUB_OUTPUT
-            release_notes_escaped=$(echo -e "$release_notes" | awk '{printf "%s\\n", $0}')
-            echo "release_notes=$release_notes_escaped" >> $GITHUB_OUTPUT
-      
-      - name: Release and Tag
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "v${{ steps.get_new_version.outputs.new_version }}"
-          body: "${{ steps.extract_notes.outputs.release_notes }}"
+            echo -e "$release_notes")
           files: dist/*.whl
             
       - name: Publish package distributions to PyPI
