@@ -44,10 +44,27 @@ jobs:
       - name: Build package
         run: python -m build
 
+      - name: Extract Release Notes
+        id: extract_notes
+        run: |
+          counter=0
+          while IFS= read -r line; do
+            if [[ $line =~ ^##\  ]]; then
+              ((counter++))
+            fi
+            if [[ $counter -lt 2 ]]; then
+              echo "$line" >> release_notes.txt
+            else
+              break
+            fi
+          done < CHANGELOG.md
+
       - name: Release and Tag
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ steps.get_new_version.outputs.new_version }}"
-
+          body_path: "./release_notes.txt"
+          files: dist/*.whl
+            
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

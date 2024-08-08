@@ -41,7 +41,7 @@ jobs:
       - name: Update pyproject.toml
         id: update_pyproject
         run: |
-          new_version=$(python release_utils/update_pyproject.py ${{ github.event.inputs.release_type }})
+          new_version=$(python .github/workflows/manual_release_pr_update_files.py ${{ github.event.inputs.release_type }})
           echo "new_version=${new_version}" >> $GITHUB_OUTPUT
 
       # ===== test the package
