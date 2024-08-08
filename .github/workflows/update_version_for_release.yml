@@ -41,13 +41,6 @@ jobs:
           new_version=$(python release_utils/update_pyproject.py ${{ github.event.inputs.release_type }})
           echo "new_version=${new_version}" >> $GITHUB_OUTPUT
 
-      - name: Commit and push pyproject change
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
-          branch: version-update-${{ github.event.inputs.release_type }}
-          create_branch: true
-
       - name: Create a Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
