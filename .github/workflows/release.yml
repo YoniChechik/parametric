@@ -48,22 +48,24 @@ jobs:
         id: extract_notes
         run: |
           counter=0
+          release_notes=""
           while IFS= read -r line; do
             if [[ $line =~ ^##\  ]]; then
               ((counter++))
             fi
             if [[ $counter -lt 2 ]]; then
-              echo "$line" >> release_notes.txt
+              release_notes="${release_notes}${line}\n"
             else
               break
             fi
           done < CHANGELOG.md
+          echo "release_notes=$(echo -e \"$release_notes\")" >> $GITHUB_OUTPUT
 
       - name: Release and Tag
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ steps.get_new_version.outputs.new_version }}"
-          body_path: "./release_notes.txt"
+          body: "${{ steps.extract_notes.outputs.release_notes }}"
           files: dist/*.whl
             
       - name: Publish package distributions to PyPI
