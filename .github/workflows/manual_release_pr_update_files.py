@@ -1,4 +1,6 @@
+import subprocess
 import sys
+from datetime import datetime
 from enum import Enum
 
 import tomlkit
@@ -59,15 +61,49 @@ def update_pyproject(dependencies, release_type):
     with open("pyproject.toml", "w") as f:
         f.write(tomlkit.dumps(pyproject))
 
-    return new_version
+    return current_version, new_version
+
+
+def get_commits_since_last_version(last_version):
+    result = subprocess.run(
+        ["git", "log", f"v{last_version}..HEAD", "--pretty=format:%s"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to get commit logs: {result.stderr}")
+    return result.stdout.splitlines()
+
+
+def update_changelog(new_version, commits):
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    changelog_entry = f"## [{new_version}] - {date_str}\n\n"
+    changelog_entry += "\n".join([f"- {commit}" for commit in commits])
+    changelog_entry += "\n\n"
+
+    # Prepend to CHANGELOG.md
+    with open("CHANGELOG.md", "r+") as changelog_file:
+        existing_content = changelog_file.read()
+        changelog_file.seek(0, 0)
+        changelog_file.write(changelog_entry + existing_content)
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in ReleaseType.list():
-        raise (f"Usage: update_pyproject.py <release_type>; Available release types: {', '.join(ReleaseType.list())}")
+        raise ValueError(
+            f"Usage: update_pyproject.py <release_type>; Available release types: {', '.join(ReleaseType.list())}"
+        )
 
     release_type = sys.argv[1]
     deps = parse_requirements("requirements.txt")
-    new_version = update_pyproject(deps, release_type)
+    last_version, new_version = update_pyproject(deps, release_type)
+
+    # Get commits since last version
+    commits = get_commits_since_last_version(last_version)
+
+    # Update CHANGELOG.md
+    update_changelog(new_version, commits)
+
     # used as the output of this script to get the version
     print(f"{new_version}")
