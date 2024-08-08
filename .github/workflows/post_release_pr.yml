@@ -1,20 +1,13 @@
-name: Upload release to PyPI
+name: Post Release PR
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_type:
-        description: 'Type of release (patch, minor, major)'
-        required: true
-        default: 'patch'
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+  pull_request:
+    types: [closed]
 
 jobs:
-  pypi-publish:
+  build-and-publish:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.title, 'Bump version to')
+ 
     name: Upload release to PyPI
     runs-on: ubuntu-latest
     environment:
@@ -38,30 +31,22 @@ jobs:
 
       - name: Install dependencies
         # build and twine for "build package" step
-        # tomlkit for "Update pyproject.toml" step
         run: |
           python -m pip install --upgrade pip
-          pip install build twine tomlkit 
+          pip install build twine
  
-      - name: Update pyproject.toml
-        id: update_pyproject
+      - name: Get Version From pyproject.toml
+        id: get_new_version
         run: |
-          new_version=$(python release_utils/update_pyproject.py ${{ github.event.inputs.release_type }})
-          echo "new_version=${new_version}" >> $GITHUB_OUTPUT
+          echo "new_version=v$(grep -Po '(?<=version = ")[^"]*' pyproject.toml)" >> $GITHUB_OUTPUT
 
       - name: Build package
         run: python -m build
-      
-      - name: Commit pyproject change
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
-          tagging_message: "v${{ steps.update_pyproject.outputs.new_version }}"
 
-      - name: Release
+      - name: Release and Tag
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ steps.update_pyproject.outputs.new_version }}"
+          tag_name: "v${{ steps.get_new_version.outputs.new_version }}"
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

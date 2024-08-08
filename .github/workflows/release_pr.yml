@@ -1,4 +1,4 @@
-name: Update Version
+name: Release PR
 
 on:
   workflow_dispatch:
@@ -19,9 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       # Give the default GITHUB_TOKEN write permission to commit and push changes.
-      # Used by stefanzweifel/git-auto-commit-action@v5
-      # contents: write
-      # permissions:
       pull-requests: write
       contents: write
     steps:
@@ -47,7 +44,6 @@ jobs:
       - name: Create a Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           branch: version-update-${{ github.event.inputs.release_type }}
           title: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
           body: "Automatic version bump to ${{ steps.update_pyproject.outputs.new_version }}."
