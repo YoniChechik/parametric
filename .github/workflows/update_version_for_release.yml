@@ -1,0 +1,52 @@
+name: Update Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Type of release (patch, minor, major)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  update-version:
+    name: Update Version in Branch
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' 
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install tomlkit
+
+      - name: Update pyproject.toml
+        id: update_pyproject
+        run: |
+          new_version=$(python release_utils/update_pyproject.py ${{ github.event.inputs.release_type }})
+          echo "new_version=${new_version}" >> $GITHUB_OUTPUT
+
+      - name: Commit and push pyproject change
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
+          branch: version-update-${{ github.event.inputs.release_type }}
+
+      - name: Create a Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: version-update-${{ github.event.inputs.release_type }}
+          title: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
+          body: "Automatic version bump to ${{ steps.update_pyproject.outputs.new_version }}."

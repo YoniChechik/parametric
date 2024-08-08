@@ -33,6 +33,7 @@ def test_cli_overrides(monkeypatch):
     params.override_from_cli()
 
     assert params.num_classes_without_bg == 3
+    assert params.dataset_name == "c"
 
 
 def test_env_overrides(monkeypatch):
