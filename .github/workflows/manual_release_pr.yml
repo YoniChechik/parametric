@@ -50,7 +50,7 @@ jobs:
 
       - name: Install built package
         run: |
-          pip install dist/*.whl
+          pip install pytest dist/*.whl
 
       - name: Run tests
         run: |
