@@ -1,5 +1,6 @@
 name: Release
 
+# NOTE: this action ONLY happens on merged PR from the manual_release_pr
 on:
   pull_request:
     types: [closed]
@@ -18,7 +19,7 @@ jobs:
       # this permission is mandatory for trusted publishing in pypi
       id-token: write 
       # Give the default GITHUB_TOKEN write permission to commit and push changes.
-      # Used by both softprops/action-gh-release@v2 and stefanzweifel/git-auto-commit-action@v5
+      # Used by both softprops/action-gh-release@v2
       contents: write
     steps:
       - name: Checkout repository

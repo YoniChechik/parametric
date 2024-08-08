@@ -1,5 +1,8 @@
-name: Release PR
+name: Manual Release PR
 
+# NOTE: github bot can't push files to main if the branch is protected, so we split the release phase to:
+# 1. a manual step that changes files and does a PR of a new branch.
+# 2. after PR is approved manually the actual release step is done
 on:
   workflow_dispatch:
     inputs:
@@ -41,9 +44,22 @@ jobs:
           new_version=$(python release_utils/update_pyproject.py ${{ github.event.inputs.release_type }})
           echo "new_version=${new_version}" >> $GITHUB_OUTPUT
 
+      # ===== test the package
+      - name: Build package
+        run: python -m build
+
+      - name: Install built package
+        run: |
+          pip install dist/*.whl
+
+      - name: Run tests
+        run: |
+          pytest /tests
+
       - name: Create a Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
           branch: version-update-${{ github.event.inputs.release_type }}
           title: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
-          body: "Automatic version bump to ${{ steps.update_pyproject.outputs.new_version }}."
+          body: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
+          commit-message: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
