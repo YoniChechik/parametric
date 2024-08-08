@@ -54,7 +54,8 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest /tests
+          cd /home/runner/work/parametric/parametric/tests
+          pytest .
 
       - name: Create a Pull Request
         uses: peter-evans/create-pull-request@v6
