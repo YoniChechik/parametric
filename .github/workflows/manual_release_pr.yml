@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history so that git log works correctly
 
       - name: Set up Python
         uses: actions/setup-python@v5
