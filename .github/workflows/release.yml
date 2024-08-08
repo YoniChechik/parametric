@@ -1,4 +1,4 @@
-name: Post Release PR
+name: Release
 
 on:
   pull_request:
@@ -38,7 +38,7 @@ jobs:
       - name: Get Version From pyproject.toml
         id: get_new_version
         run: |
-          echo "new_version=v$(grep -Po '(?<=version = ")[^"]*' pyproject.toml)" >> $GITHUB_OUTPUT
+          echo "new_version=$(grep -Po '(?<=version = ")[^"]*' pyproject.toml)" >> $GITHUB_OUTPUT
 
       - name: Build package
         run: python -m build
