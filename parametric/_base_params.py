@@ -44,13 +44,16 @@ class BaseParams:
             raise RuntimeError(
                 "Got odd amount of space separated strings as CLI inputs. Must be even as '--key value' pairs"
             )
+        changed_params = {}
         for i in range(0, len(argv), 2):
             key = argv[i]
             if not key.startswith("--"):
                 raise RuntimeError(f"Invalid argument key: {key}. Argument keys must start with '--'.")
             key = key.lstrip("-")
             value = argv[i + 1]
-            self.override_from_dict({key: value})
+            changed_params[key] = value
+
+        self.override_from_dict(changed_params)
 
     def override_from_yaml(self, filepath: str) -> None:
         if not os.path.exists(filepath):
