@@ -102,5 +102,5 @@ def wrangle_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, bo
 
     raise ValueError(
         f"Field {field_name} should have only this immutable typehints or a union of them: "
-        f"tuple, Literal, Enum, {', '.join(t.__name__ for t in IMMUTABLE_BASE_TYPES)}"
+        f"tuple, Literal, Enum, {', '.join(t.__name__ for t in IMMUTABLE_BASE_TYPES)}",
     )

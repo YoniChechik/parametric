@@ -92,7 +92,7 @@ def update_changelog(new_version, commits):
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in ReleaseType.list():
         raise ValueError(
-            f"Usage: update_pyproject.py <release_type>; Available release types: {', '.join(ReleaseType.list())}"
+            f"Usage: update_pyproject.py <release_type>; Available release types: {', '.join(ReleaseType.list())}",
         )
 
     release_type = sys.argv[1]

@@ -42,7 +42,7 @@ class BaseParams:
         argv = sys.argv[1:]  # Skip the script name
         if len(argv) % 2 != 0:
             raise RuntimeError(
-                "Got odd amount of space separated strings as CLI inputs. Must be even as '--key value' pairs"
+                "Got odd amount of space separated strings as CLI inputs. Must be even as '--key value' pairs",
             )
         changed_params = {}
         for i in range(0, len(argv), 2):
@@ -76,7 +76,7 @@ class BaseParams:
             if lower_name in lower_to_actual_case:
                 conflicting_name = lower_to_actual_case[lower_name]
                 raise RuntimeError(
-                    f"Parameter names '{param_name}' and '{conflicting_name}' conflict when considered in lowercase."
+                    f"Parameter names '{param_name}' and '{conflicting_name}' conflict when considered in lowercase.",
                 )
             lower_to_actual_case[lower_name] = param_name
 
