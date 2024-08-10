@@ -39,7 +39,7 @@ def test_save_yaml():
         tmp_yaml_name = tmp_yaml.name
         params.save_yaml(tmp_yaml_name)
 
-    with open(tmp_yaml_name, "r") as f:
+    with open(tmp_yaml_name) as f:
         loaded_params = f.read()
 
     os.remove(tmp_yaml_name)

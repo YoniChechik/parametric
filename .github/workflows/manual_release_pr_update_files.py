@@ -17,7 +17,7 @@ class ReleaseType(str, Enum):
 
 
 def parse_requirements(filename):
-    with open(filename, "r") as f:
+    with open(filename) as f:
         return [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
 
@@ -38,7 +38,7 @@ def bump_version(version, release_type):
 
 
 def update_pyproject(dependencies, release_type):
-    with open("pyproject.toml", "r") as f:
+    with open("pyproject.toml") as f:
         pyproject = tomlkit.parse(f.read())
 
     # Ensure 'project' and 'dependencies' sections exist
