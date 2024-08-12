@@ -22,8 +22,8 @@ class BaseParams:
             if given_value == EMPTY_FIELD:
                 continue
 
-            converted_value, _ = wrangle_type(field_name, given_value, field_type)
-            setattr(self, field_name, converted_value)
+            wrangle_type_return = wrangle_type(field_name, given_value, field_type)
+            setattr(self, field_name, wrangle_type_return.converted_value)
 
     def _get_value(self, field_name):
         given_value = getattr(self, field_name, EMPTY_FIELD)
@@ -36,8 +36,8 @@ class BaseParams:
                 raise RuntimeError(f"param name {param_name} does not exist")
 
             field_type = param_name_to_type_hint[param_name]
-            value, _ = wrangle_type(param_name, value, field_type)
-            setattr(self, param_name, value)
+            wrangle_type_return = wrangle_type(param_name, value, field_type)
+            setattr(self, param_name, wrangle_type_return.converted_value)
 
     def override_from_cli(self):
         argv = sys.argv[1:]  # Skip the script name
