@@ -11,11 +11,6 @@ class WrangleTypeReturn:
     converted_value: Any
     is_coerced: bool
 
-    def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, WrangleTypeReturn):
-            return False
-        return (self.converted_value == other.converted_value) and (self.is_coerced == other.is_coerced)
-
 
 def wrangle_type(param_name: str, value: Any, target_type: Any) -> WrangleTypeReturn:
     if target_type == Any:
