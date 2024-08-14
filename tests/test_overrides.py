@@ -9,6 +9,11 @@ import pytest
 from parametric import BaseParams
 
 
+class MyValidationParams(BaseParams):
+    validation_batch_size: int = 8
+    validation_save_dir: Path = "/./my_dir"
+
+
 class MyParams(BaseParams):
     num_classes_without_bg: int = 5
     scheduler_name: str | None = None
@@ -21,6 +26,7 @@ class MyParams(BaseParams):
     init_lr: float = 1e-4
     is_dropout: bool = False
     data_dirs: tuple[Path, ...]
+    validation: MyValidationParams = MyValidationParams()
 
 
 def test_cli_overrides(monkeypatch):

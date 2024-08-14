@@ -1,9 +1,15 @@
 import os
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import pytest
 
 from parametric import BaseParams
+
+
+class MyValidationParams(BaseParams):
+    validation_batch_size: int = 8
+    validation_save_dir: Path = "/my_dir"
 
 
 class MyParams(BaseParams):
@@ -23,6 +29,8 @@ class MyParams(BaseParams):
     lr_scheduler_factor: float = 0.5
     continue_train_dir_path: str | None = None
     continue_train_is_reset_to_init_lr: bool = False
+    save_dir: Path = "/my_save_path"
+    validation: MyValidationParams = MyValidationParams()
 
 
 def test_save_yaml():
