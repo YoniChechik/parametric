@@ -63,7 +63,7 @@ def test_save_yaml():
         "nn_encoder_name: efficientnet-b0\n"
         "num_classes_without_bg: 3\n"
         "num_epochs: 500\n"
-        "res_dir: \my_res_path\n"
+        f"res_dir: {os.sep}my_res_path\n"
         "save_dir_path: null\n"
         "train_batch_size: 8\n"
         "val_batch_size: 32\n"
