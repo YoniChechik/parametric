@@ -81,7 +81,7 @@ def test_save_yaml(params: MyParams):
         "val_batch_size: 32\n"
         "validation:\n"
         "  validation_batch_size: 8\n"
-        "  validation_save_dir: \my_dir\n"
+        f"  validation_save_dir: {os.sep}my_dir\n"
         "validation_step_per_epochs: 1\n"
     )
 
