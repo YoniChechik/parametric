@@ -1,3 +1,4 @@
+import copy
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -33,8 +34,13 @@ class MyParams(BaseParams):
     validation: MyValidationParams = MyValidationParams()
 
 
-def test_save_yaml():
-    params = MyParams()
+@pytest.fixture
+def params():
+    # Return a deep copy of the params to ensure each test gets a fresh instance
+    return copy.deepcopy(MyParams())
+
+
+def test_save_yaml(params: MyParams):
     params.num_epochs = 500
     params.num_classes_without_bg = 3
     params.train_batch_size = 8
@@ -73,13 +79,16 @@ def test_save_yaml():
         "save_dir_path: null\n"
         "train_batch_size: 8\n"
         "val_batch_size: 32\n"
+        "validation:\n"
+        "  validation_batch_size: 8\n"
+        "  validation_save_dir: \my_dir\n"
         "validation_step_per_epochs: 1\n"
     )
 
     assert loaded_params == expected_yaml
 
 
-def test_to_dict():
+def test_to_dict(params: MyParams):
     params = MyParams()
     params.num_epochs = 500
     params.num_classes_without_bg = 3

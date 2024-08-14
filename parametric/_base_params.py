@@ -5,28 +5,36 @@ from typing import Any, get_type_hints
 
 import yaml
 
-from parametric._const import EMPTY_FIELD
+from parametric._const import EMPTY_PARAM
 from parametric._wrangle_type import wrangle_type
 
 
 class BaseParams:
     def __init__(self):
         self._is_frozen = False
+        self._inner_params_that_are_baseparam_class: set[str] = set()
 
         # ==== convert all on init
         param_name_to_type_hint = get_type_hints(self)
-        for field_name, field_type in param_name_to_type_hint.items():
-            given_value = self._get_value(field_name)
+        for param_name, field_type in param_name_to_type_hint.items():
+            value = self._get_value_including_empty(param_name)
 
             # don't work on empty field
-            if given_value == EMPTY_FIELD:
+            if value == EMPTY_PARAM:
                 continue
 
-            wrangle_type_return = wrangle_type(field_name, given_value, field_type)
-            setattr(self, field_name, wrangle_type_return.converted_value)
+            self._wrangle_and_set(param_name, field_type, value)
 
-    def _get_value(self, field_name):
-        given_value = getattr(self, field_name, EMPTY_FIELD)
+    def _wrangle_and_set(self, param_name, field_type, value):
+        wrangle_type_return = wrangle_type(param_name, value, field_type)
+        if isinstance(wrangle_type_return.converted_value, BaseParams):
+            self._inner_params_that_are_baseparam_class.add(param_name)
+        else:
+            self._inner_params_that_are_baseparam_class.discard(param_name)
+        setattr(self, param_name, wrangle_type_return.converted_value)
+
+    def _get_value_including_empty(self, field_name):
+        given_value = getattr(self, field_name, EMPTY_PARAM)
         return given_value
 
     def override_from_dict(self, changed_params: dict[str, Any]):
@@ -36,8 +44,7 @@ class BaseParams:
                 raise RuntimeError(f"param name {param_name} does not exist")
 
             field_type = param_name_to_type_hint[param_name]
-            wrangle_type_return = wrangle_type(param_name, value, field_type)
-            setattr(self, param_name, wrangle_type_return.converted_value)
+            self._wrangle_and_set(param_name, field_type, value)
 
     def override_from_cli(self):
         argv = sys.argv[1:]  # Skip the script name
@@ -132,10 +139,12 @@ class BaseParams:
 
     def freeze(self) -> None:
         param_name_to_type_hint = get_type_hints(self)
-        for field_name in param_name_to_type_hint:
+        for param_name in param_name_to_type_hint:
             # check empty field
-            if self._get_value(field_name) == EMPTY_FIELD:
-                raise ValueError(f"{field_name} is empty and must be set before freeze()")
+            if self._get_value_including_empty(param_name) == EMPTY_PARAM:
+                raise ValueError(f"{param_name} is empty and must be set before freeze()")
+            if param_name in self._inner_params_that_are_baseparam_class:
+                getattr(self, param_name).freeze()
 
         self._is_frozen = True
 
