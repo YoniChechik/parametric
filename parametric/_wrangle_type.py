@@ -43,11 +43,30 @@ def wrangle_type(field_name: str, value: Any, target_type: Any) -> WrangleTypeRe
     if issubclass(target_type, Enum):
         return _handle_enum_type(field_name, value, target_type)
 
+    # NOTE: this import is here to avoid circular imports
+    from parametric._base_params import BaseParams
+
+    if issubclass(target_type, BaseParams):
+        return _handle_baseparams_type(field_name, value, target_type)
+
     # ==== Raise error if the type is not handled
     raise ValueError(
         f"Field '{field_name}' must be one of the following: a subclass of BaseParams, an immutable type (such as tuple, "
         f"Literal, Enum, {', '.join(t.__name__ for t in IMMUTABLE_BASE_TYPES)}), or a union of these types."
     )
+
+
+def _handle_baseparams_type(field_name: str, value: Any, target_type: Any) -> tuple[Any, bool]:
+    """Handles conversion for subclasses of BaseParams."""
+    if isinstance(value, target_type):
+        return WrangleTypeReturn(value, False)
+
+    if isinstance(value, dict):
+        instance = target_type()
+        instance.override_from_dict(value)
+        return WrangleTypeReturn(instance, True)
+
+    raise ValueError(f"Cannot convert {value} in field {field_name} to {target_type}")
 
 
 def _handle_base_type(value: Any, target_type: Any) -> tuple[Any, bool]:

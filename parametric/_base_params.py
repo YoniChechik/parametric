@@ -98,7 +98,13 @@ class BaseParams:
         if not self._is_frozen:
             raise RuntimeError("'to_dict' only works on frozen params. please run freeze() first")
         param_name_to_type_hint = get_type_hints(self)
-        return {field_name: getattr(self, field_name) for field_name in param_name_to_type_hint}
+        res_dict = {}
+        for field_name in param_name_to_type_hint:
+            value = getattr(self, field_name)
+            if isinstance(value, BaseParams):
+                value = value.to_dict()
+            res_dict[field_name] = value
+        return res_dict
 
     def save_yaml(self, filepath: str) -> None:
         if not self._is_frozen:
