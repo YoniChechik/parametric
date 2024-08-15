@@ -47,11 +47,11 @@ def test_save_yaml():
     expected_yaml = (
         "continue_train_dir_path: null\n"
         "continue_train_is_reset_to_init_lr: false\n"
-        "data_dirs: !!python/tuple\n"
+        "data_dirs:\n"
         "- x\n"
         "- Y\n"
         "dataset_name: null\n"
-        "image_shape: !!python/tuple\n"
+        "image_shape:\n"
         "- 640\n"
         "- 640\n"
         "init_lr: 0.0001\n"

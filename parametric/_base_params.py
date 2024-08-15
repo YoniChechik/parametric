@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 from typing import Any, get_type_hints
 
 import yaml
@@ -55,12 +56,13 @@ class BaseParams:
 
         self.override_from_dict(changed_params)
 
-    def override_from_yaml(self, filepath: str) -> None:
-        if not os.path.exists(filepath):
+    def override_from_yaml(self, filepath: Path | str) -> None:
+        filepath = Path(filepath)
+        if not filepath.is_file():
             return
 
-        with open(filepath) as stream:
-            changed_params = yaml.safe_load(stream)
+        with open(filepath) as f:
+            changed_params = yaml.safe_load(f)
         if changed_params is None:
             return
 
@@ -101,6 +103,14 @@ class BaseParams:
     def save_yaml(self, filepath: str) -> None:
         if not self._is_frozen:
             raise RuntimeError("'save_yaml' only works on frozen params. please run freeze() first")
+
+        # ==== build this two functions to avoid getting !!python/tuple for every tuple
+        # Custom representer to convert tuples to lists
+        def tuple_to_list_representer(dumper, data):
+            return dumper.represent_list(list(data))
+
+        # Register the custom representer with PyYAML
+        yaml.add_representer(tuple, tuple_to_list_representer)
 
         with open(filepath, "w") as outfile:
             yaml.dump(self.to_dict(), outfile)
