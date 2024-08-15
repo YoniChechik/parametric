@@ -121,15 +121,3 @@ def _handle_tuple_type(param_name: str, value: Any, inner_args: tuple) -> tuple[
     # Determine if any element was coerced
     coerced = any(r.is_coerced for r in results)
     return WrangleTypeReturn(tuple(r.converted_value for r in results), coerced)
-
-
-def _validate_complex_type(param_name: str, target_type: Any, outer_type: Any, inner_args: tuple):
-    """Validates complex types before processing."""
-    if target_type is Union and outer_type is None:
-        raise ValueError(f"Type hint for {param_name} cannot be 'Union' without specifying element types")
-
-    if target_type is tuple and outer_type is None:
-        raise ValueError(f"Type hint for {param_name} cannot be 'tuple' without specifying element types")
-
-    if target_type is Tuple and len(inner_args) == 0:
-        raise ValueError(f"Type hint for {param_name} cannot be 'Tuple' without specifying element types")
