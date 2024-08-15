@@ -1,6 +1,9 @@
 
 ## [0.2.4] - 2024-08-15
 
+
+## [0.2.4] - 2024-08-15
+
 - Automated Changelog + new version release notes (#49)
 - Base params as input field (#41)
 - Path to str yaml (#40)
