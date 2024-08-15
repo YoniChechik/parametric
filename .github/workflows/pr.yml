@@ -20,8 +20,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: prepend PR title to changelog
-        run: |
-          echo "- ${GITHUB_EVENT_PULL_REQUEST_TITLE}" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: echo "- $TITLE" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
    
       - name: commit updated changelog
         uses: stefanzweifel/git-auto-commit-action@v5

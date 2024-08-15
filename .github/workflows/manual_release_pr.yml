@@ -56,8 +56,10 @@ jobs:
 
       - name: Run tests
         # ignore existing configuration file and run only the tests dir with the installed package and not the src dir from the repo
-        run: |
-          pytest -c /dev/null --rootdir ./tests
+        run: pytest -c /dev/null --rootdir ./tests
+
+      - name: Update changelog
+        run: printf "\n## ${{ github.event.inputs.release_type }}" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
 
       - name: Create a Pull Request
         uses: peter-evans/create-pull-request@v6

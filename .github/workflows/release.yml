@@ -44,25 +44,30 @@ jobs:
       - name: Build package
         run: python -m build
 
+      - name: Read changelog
+        id: get_changlog_version
+        run: |
+        count=0
+        output=""
+
+        while IFS= read -r line
+        do
+            if [ "$(echo "$line" | cut -c1-2)" = "##" ]; then
+                count=$((count + 1))
+                if [ "$count" -eq 2 ]; then
+                    break
+                fi
+            fi
+            output="$output$line\n"
+        done < CHANGELOG.md
+
+        echo "changlog_version=$output" >> $GITHUB_OUTPUT
+
       - name: Release and Tag
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ steps.get_new_version.outputs.new_version }}"
-          body: |
-            $(counter=0
-            release_notes=""
-            while IFS= read -r line; do
-              if [[ $line =~ ^##\  ]]; then
-                ((counter++))
-              fi
-              if [[ $counter -lt 2 ]]; then
-                release_notes="${release_notes}${line}\n"
-              else
-                break
-              fi
-            done < CHANGELOG.md
-
-            echo -e "$release_notes")
+          body: ${{ steps.get_changlog_version.outputs.changlog_version }}
           files: dist/*.whl
             
       - name: Publish package distributions to PyPI
