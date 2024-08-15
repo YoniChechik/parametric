@@ -1,30 +1,49 @@
 name: Every PR that is not release
 
-
 on:
   pull_request:
     types: [opened]
 
-
 jobs:
   pr:
     if: "!startsWith(github.event.pull_request.title, 'Bump version to')"
- 
     runs-on: ubuntu-latest
     permissions:
-      # Give the default GITHUB_TOKEN write permission to commit and push the
-      # added or changed files to the repository.
       contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: prepend PR title to changelog
+      - name: Prepend PR title to changelog
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: echo "- $TITLE" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
-   
-      - name: commit updated changelog
+
+      - name: Read changelog
+        id: get_changelog_version
+        run: |
+          count=0
+          output=""
+
+          while IFS= read -r line
+          do
+              if [ "$(echo "$line" | cut -c1-2)" = "##" ]; then
+                  count=$((count + 1))
+                  if [ "$count" -eq 2 ]; then
+                      break
+                  fi
+              fi
+              output="$output$line\n"
+          done < CHANGELOG.md
+
+          # Remove the trailing newline
+          echo "changelog_version=$output" >> $GITHUB_OUTPUT
+
+      - name: Test output
+        run: echo "${{ steps.get_changelog_version.outputs.changelog_version }}" >> test.md
+
+      - name: Commit updated changelog
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "update changelog with PR title"
