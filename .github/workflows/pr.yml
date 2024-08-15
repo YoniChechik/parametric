@@ -4,9 +4,7 @@ on:
   pull_request:
     types:
       - opened
-      - edited
-      - reopened
-      - synchronize
+
 jobs:
   pr:
     if: "!startsWith(github.event.pull_request.title, 'Bump version to')"
@@ -21,30 +19,8 @@ jobs:
       - name: Prepend PR title to changelog
         env:
           TITLE: ${{ github.event.pull_request.title }}
-        run: echo "- $TITLE" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
-
-      - name: Read changelog
-        id: get_changelog_version
-        run: |
-          count=0
-          output=""
-
-          while IFS= read -r line
-          do
-              if [ "$(echo "$line" | cut -c1-2)" = "##" ]; then
-                  count=$((count + 1))
-                  if [ "$count" -eq 2 ]; then
-                      break
-                  fi
-              fi
-              output="$output$line\n"
-          done < CHANGELOG.md
-
-          # Remove the trailing newline
-          echo "$output" >> pr.md
-
-      - name: Test output
-        run: cat pr.md
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: echo "- $TITLE (#$PR_NUM)" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
 
       - name: Commit updated changelog
         uses: stefanzweifel/git-auto-commit-action@v5
