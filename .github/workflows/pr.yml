@@ -2,8 +2,11 @@ name: Every PR that is not release
 
 on:
   pull_request:
-    types: [opened]
-
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
 jobs:
   pr:
     if: "!startsWith(github.event.pull_request.title, 'Bump version to')"
@@ -38,10 +41,10 @@ jobs:
           done < CHANGELOG.md
 
           # Remove the trailing newline
-          echo "changelog_version=$output" >> $GITHUB_OUTPUT
+          echo "$output" >> pr.md
 
       - name: Test output
-        run: echo "${{ steps.get_changelog_version.outputs.changelog_version }}" >> test.md
+        run: cat pr.md
 
       - name: Commit updated changelog
         uses: stefanzweifel/git-auto-commit-action@v5
