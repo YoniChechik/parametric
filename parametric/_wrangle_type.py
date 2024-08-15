@@ -11,11 +11,6 @@ class WrangleTypeReturn:
     converted_value: Any
     is_coerced: bool
 
-    def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, WrangleTypeReturn):
-            return False
-        return (self.converted_value == other.converted_value) and (self.is_coerced == other.is_coerced)
-
 
 def wrangle_type(param_name: str, value: Any, target_type: Any) -> WrangleTypeReturn:
     if target_type == Any:
@@ -67,50 +62,6 @@ def _handle_baseparams_type(param_name: str, value: Any, target_type: Any) -> tu
         return WrangleTypeReturn(instance, True)
 
     raise ValueError(f"Cannot convert {value} in parameter '{param_name}' to {target_type}")
-
-
-@dataclass
-class WrangleTypeReturn:
-    converted_value: Any
-    is_coerced: bool
-
-    def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, WrangleTypeReturn):
-            return False
-        return (self.converted_value == other.converted_value) and (self.is_coerced == other.is_coerced)
-
-
-def wrangle_type(field_name: str, value: Any, target_type: Any) -> WrangleTypeReturn:
-    if target_type == Any:
-        raise ValueError(f"Type `Any` is not allowed, cannot convert '{field_name}'")
-
-    if target_type in IMMUTABLE_BASE_TYPES:
-        return _handle_base_type(value, target_type)
-
-    # ==== complex types
-    outer_type = get_origin(target_type)
-    inner_args = get_args(target_type)
-
-    _validate_complex_type(field_name, target_type, outer_type, inner_args)
-
-    if outer_type in {Union, UnionType}:
-        return _handle_union_type(field_name, value, target_type, inner_args)
-
-    if outer_type in {tuple, Tuple}:
-        return _handle_tuple_type(field_name, value, inner_args)
-
-    if outer_type is Literal:
-        return _handle_literal_type(field_name, value, inner_args)
-
-    # ==== subclasses
-    if issubclass(target_type, Enum):
-        return _handle_enum_type(field_name, value, target_type)
-
-    # ==== Raise error if the type is not handled
-    raise ValueError(
-        f"Field '{field_name}' must be one of the following: a subclass of BaseParams, an immutable type (such as tuple, "
-        f"Literal, Enum, {', '.join(t.__name__ for t in IMMUTABLE_BASE_TYPES)}), or a union of these types."
-    )
 
 
 def _handle_base_type(value: Any, target_type: Any) -> tuple[Any, bool]:
@@ -170,14 +121,3 @@ def _handle_tuple_type(param_name: str, value: Any, inner_args: tuple) -> tuple[
     # Determine if any element was coerced
     coerced = any(r.is_coerced for r in results)
     return WrangleTypeReturn(tuple(r.converted_value for r in results), coerced)
-
-def _validate_complex_type(param_name: str, target_type: Any, outer_type: Any, inner_args: tuple):
-    """Validates complex types before processing."""
-    if target_type is Union and outer_type is None:
-        raise ValueError(f"Type hint for {param_name} cannot be 'Union' without specifying element types")
-
-    if target_type is tuple and outer_type is None:
-        raise ValueError(f"Type hint for {param_name} cannot be 'tuple' without specifying element types")
-
-    if target_type is Tuple and len(inner_args) == 0:
-        raise ValueError(f"Type hint for {param_name} cannot be 'Tuple' without specifying element types")
