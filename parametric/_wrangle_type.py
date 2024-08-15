@@ -40,8 +40,7 @@ def wrangle_type(field_name: str, value: Any, target_type: Any) -> WrangleTypeRe
         return _handle_literal_type(field_name, value, inner_args)
 
     # ==== subclasses
-    # NOTE: issubclass can't take complex type, so we need to check for that
-    if outer_type is None and issubclass(target_type, Enum):
+    if issubclass(target_type, Enum):
         return _handle_enum_type(field_name, value, target_type)
 
     # ==== Raise error if the type is not handled

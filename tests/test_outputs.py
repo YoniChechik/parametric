@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import pytest
@@ -23,6 +24,7 @@ class MyParams(BaseParams):
     lr_scheduler_factor: float = 0.5
     continue_train_dir_path: str | None = None
     continue_train_is_reset_to_init_lr: bool = False
+    res_dir: Path = "/my_res_path"
 
 
 def test_save_yaml():
@@ -61,6 +63,7 @@ def test_save_yaml():
         "nn_encoder_name: efficientnet-b0\n"
         "num_classes_without_bg: 3\n"
         "num_epochs: 500\n"
+        f"res_dir: {os.sep}my_res_path\n"
         "save_dir_path: null\n"
         "train_batch_size: 8\n"
         "val_batch_size: 32\n"

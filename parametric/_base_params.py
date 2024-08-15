@@ -1,6 +1,6 @@
 import os
 import sys
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, get_type_hints
 
 import yaml
@@ -104,16 +104,25 @@ class BaseParams:
         if not self._is_frozen:
             raise RuntimeError("'save_yaml' only works on frozen params. please run freeze() first")
 
-        # ==== build this two functions to avoid getting !!python/tuple for every tuple
-        # Custom representer to convert tuples to lists
-        def tuple_to_list_representer(dumper, data):
+        # ==== Custom representers
+        # make your own patched dumper type and use it explicitly, so you won't modify the global mutable state of PyYAML itself
+        class CustomDumper(yaml.SafeDumper):
+            pass
+
+        # avoid `!!python/tuple` for every tuple by converting to list
+        def tuple_to_list_representer(dumper: yaml.SafeDumper, data):
             return dumper.represent_list(list(data))
 
-        # Register the custom representer with PyYAML
-        yaml.add_representer(tuple, tuple_to_list_representer)
+        # avoid `!!python/object/apply:pathlib...` for every Path by converting to str
+        def path_to_str_representer(dumper: yaml.SafeDumper, data):
+            return dumper.represent_scalar("tag:yaml.org,2002:str", str(data))
 
-        with open(filepath, "w") as outfile:
-            yaml.dump(self.to_dict(), outfile)
+        # Register the custom representer with PyYAML
+        CustomDumper.add_representer(tuple, tuple_to_list_representer)
+        CustomDumper.add_multi_representer(PurePath, path_to_str_representer)
+
+        with open(filepath, "w") as stream:
+            stream.write(yaml.dump(self.to_dict(), Dumper=CustomDumper))
 
     def freeze(self) -> None:
         param_name_to_type_hint = get_type_hints(self)
