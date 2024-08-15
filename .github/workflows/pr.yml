@@ -38,7 +38,6 @@ jobs:
           done < CHANGELOG.md
 
           # Remove the trailing newline
-          output=$(echo -e "$output" | sed '$d')
           echo "changelog_version=$output" >> $GITHUB_OUTPUT
 
       - name: Test output
