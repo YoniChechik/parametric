@@ -1,3 +1,4 @@
+import copy
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -5,6 +6,11 @@ from tempfile import NamedTemporaryFile
 import pytest
 
 from parametric import BaseParams
+
+
+class MyValidationParams(BaseParams):
+    validation_batch_size: int = 8
+    validation_save_dir: Path = "/my_dir"
 
 
 class MyParams(BaseParams):
@@ -25,10 +31,16 @@ class MyParams(BaseParams):
     continue_train_dir_path: str | None = None
     continue_train_is_reset_to_init_lr: bool = False
     res_dir: Path = "/my_res_path"
+    validation: MyValidationParams = MyValidationParams()
 
 
-def test_save_yaml():
-    params = MyParams()
+@pytest.fixture
+def params():
+    # Return a deep copy of the params to ensure each test gets a fresh instance
+    return copy.deepcopy(MyParams())
+
+
+def test_save_yaml(params: MyParams):
     params.num_epochs = 500
     params.num_classes_without_bg = 3
     params.train_batch_size = 8
@@ -67,13 +79,16 @@ def test_save_yaml():
         "save_dir_path: null\n"
         "train_batch_size: 8\n"
         "val_batch_size: 32\n"
+        "validation:\n"
+        "  validation_batch_size: 8\n"
+        f"  validation_save_dir: {os.sep}my_dir\n"
         "validation_step_per_epochs: 1\n"
     )
 
     assert loaded_params == expected_yaml
 
 
-def test_to_dict():
+def test_to_dict(params: MyParams):
     params = MyParams()
     params.num_epochs = 500
     params.num_classes_without_bg = 3
