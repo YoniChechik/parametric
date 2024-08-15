@@ -60,8 +60,8 @@ jobs:
               output="$output$line\n"
           done < CHANGELOG.md
 
-          # Remove the trailing newline
-          echo "$output" >> relevant_changelog.md
+          # Write the output to a file with actual newlines
+          printf "%b" "$output" > relevant_changelog.md
 
       - name: Release and Tag
         uses: softprops/action-gh-release@v2

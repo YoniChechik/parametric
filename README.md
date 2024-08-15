@@ -8,7 +8,6 @@
 - **Flexible Initialization:** You can initialize parameters with empty fields, which must be filled before the object is frozen.
 - **Override Mechanisms:** Supports overriding parameters via CLI arguments, environment variables, YAML files, and dictionaries.
 - **Serialization:** Parameters can be easily saved and loaded using YAML.
-- **Python 3.9+ Compatibility:** Works seamlessly with modern Python versions, and aims to extend support to Python 3.9.
 
 ## Installation
 
@@ -124,13 +123,6 @@ The main difference between `parametric` and `pydantic` lies in their design phi
 
 - **Immutability:** `parametric` restricts all parameters to immutable types, making it suitable for use cases where configuration parameters should not change after initialization.
 - **Flexibility with Empty Fields:** `parametric` allows empty fields during initialization, which must be set before freezing, offering flexibility during the setup phase.
-
-## Roadmap
-
-- **Automatic Changelog Generation:** Automate the creation of changelogs for each release.
-- **Python 3.9 Compatibility:** Extend support to Python 3.9.
-- **Nested BaseParamss:** Support for nested `BaseParams` objects.
-- **Additional Type Support:** Add support for `datetime` objects
 
 ## Contributing
 
