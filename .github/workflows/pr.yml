@@ -23,7 +23,29 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: echo "- $TITLE" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
-   
+      
+      - name: Read changelog
+        id: get_changlog_version
+        run: |
+        count=0
+        output=""
+
+        while IFS= read -r line
+        do
+            if [ "$(echo "$line" | cut -c1-2)" = "##" ]; then
+                count=$((count + 1))
+                if [ "$count" -eq 2 ]; then
+                    break
+                fi
+            fi
+            output="$output$line\n"
+        done < CHANGELOG.md
+
+        echo "changlog_version=$output" >> $GITHUB_OUTPUT
+      
+      - name: test
+        run: echo "${{ steps.get_changlog_version.outputs.changlog_version }}" >> test.md
+      
       - name: commit updated changelog
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
