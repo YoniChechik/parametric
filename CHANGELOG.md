@@ -1,4 +1,8 @@
 
+## [0.3.0] - 2024-08-20
+
+- Type node (#52)
+
 ## [0.2.4] - 2024-08-15
 
 - Automated Changelog + new version release notes (#49)
