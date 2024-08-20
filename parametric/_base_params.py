@@ -6,7 +6,6 @@ from typing import Any, get_type_hints
 import yaml
 
 from parametric._const import EMPTY_PARAM
-from parametric._gui.base import run_gui
 from parametric._typehint_parsing import parse_typehint
 
 
@@ -156,10 +155,3 @@ class BaseParams:
         if getattr(self, "_is_frozen", False):
             raise AttributeError(f"Params are frozen. Cannot modify attribute {key}")
         super().__setattr__(key, value)
-
-    def override_gui(self) -> None:
-        """Launches a NiceGUI interface to override parameters interactively."""
-        name_to_value = {name: self._get_value_including_empty(name) for name in self._name_to_type_node}
-        override_dict = run_gui(self._name_to_type_node, name_to_value)
-
-        self.override_from_dict(override_dict)
