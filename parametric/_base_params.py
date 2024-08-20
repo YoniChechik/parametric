@@ -6,45 +6,51 @@ from typing import Any, get_type_hints
 import yaml
 
 from parametric._const import EMPTY_PARAM
-from parametric._wrangle_type import wrangle_type
+from parametric._gui.base import run_gui
+from parametric._typehint_parsing import parse_typehint
 
 
 class BaseParams:
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseParams:
+            raise TypeError(f"{cls.__name__} cannot be instantiated directly, only derive from")
+        return super().__new__(cls)
+
     def __init__(self):
         self._is_frozen = False
         self._inner_params_that_are_baseparam_class: set[str] = set()
 
         # ==== convert all on init
-        param_name_to_type_hint = get_type_hints(self)
-        for param_name, field_type in param_name_to_type_hint.items():
-            value = self._get_value_including_empty(param_name)
+        self._name_to_type_node = {
+            name: parse_typehint(name, typehint) for name, typehint in get_type_hints(self).items()
+        }
+        for name in self._name_to_type_node:
+            value = self._get_value_including_empty(name)
 
             # don't work on empty field
             if value == EMPTY_PARAM:
                 continue
 
-            self._wrangle_and_set(param_name, field_type, value)
+            self._convert_and_set(name, value)
 
-    def _wrangle_and_set(self, param_name, field_type, value):
-        wrangle_type_return = wrangle_type(param_name, value, field_type)
-        if isinstance(wrangle_type_return.converted_value, BaseParams):
-            self._inner_params_that_are_baseparam_class.add(param_name)
+    def _convert_and_set(self, name, value):
+        conversion_return = self._name_to_type_node[name].convert(value)
+        if isinstance(conversion_return.converted_value, BaseParams):
+            self._inner_params_that_are_baseparam_class.add(name)
         else:
-            self._inner_params_that_are_baseparam_class.discard(param_name)
-        setattr(self, param_name, wrangle_type_return.converted_value)
+            self._inner_params_that_are_baseparam_class.discard(name)
+        setattr(self, name, conversion_return.converted_value)
 
     def _get_value_including_empty(self, field_name):
         given_value = getattr(self, field_name, EMPTY_PARAM)
         return given_value
 
     def override_from_dict(self, changed_params: dict[str, Any]):
-        param_name_to_type_hint = get_type_hints(self)
-        for param_name, value in changed_params.items():
-            if param_name not in param_name_to_type_hint:
-                raise RuntimeError(f"param name {param_name} does not exist")
+        for name, value in changed_params.items():
+            if name not in self._name_to_type_node:
+                raise RuntimeError(f"param name '{name}' does not exist")
 
-            field_type = param_name_to_type_hint[param_name]
-            self._wrangle_and_set(param_name, field_type, value)
+            self._convert_and_set(name, value)
 
     def override_from_cli(self):
         argv = sys.argv[1:]  # Skip the script name
@@ -76,18 +82,16 @@ class BaseParams:
         self.override_from_dict(changed_params)
 
     def override_from_envs(self, env_prefix: str = "_param_") -> None:
-        param_name_to_type_hint = get_type_hints(self)
-
         # Build a dictionary mapping lowercase names to actual case-sensitive names
         lower_to_actual_case = {}
-        for param_name in param_name_to_type_hint:
-            lower_name = param_name.lower()
+        for name in self._name_to_type_node:
+            lower_name = name.lower()
             if lower_name in lower_to_actual_case:
                 conflicting_name = lower_to_actual_case[lower_name]
                 raise RuntimeError(
-                    f"Parameter names '{param_name}' and '{conflicting_name}' conflict when considered in lowercase.",
+                    f"Parameter names '{name}' and '{conflicting_name}' conflict when considered in lowercase.",
                 )
-            lower_to_actual_case[lower_name] = param_name
+            lower_to_actual_case[lower_name] = name
 
         changed_params = {}
         for key, value in os.environ.items():
@@ -96,17 +100,16 @@ class BaseParams:
             param_key = key[len(env_prefix) :].lower()
 
             if param_key in lower_to_actual_case:
-                actual_param_name = lower_to_actual_case[param_key]
-                changed_params[actual_param_name] = value
+                actual_name = lower_to_actual_case[param_key]
+                changed_params[actual_name] = value
 
         self.override_from_dict(changed_params)
 
     def to_dict(self) -> dict[str, Any]:
         if not self._is_frozen:
             raise RuntimeError("'to_dict' only works on frozen params. please run freeze() first")
-        param_name_to_type_hint = get_type_hints(self)
         res_dict = {}
-        for field_name in param_name_to_type_hint:
+        for field_name in self._name_to_type_node:
             value = getattr(self, field_name)
             if isinstance(value, BaseParams):
                 value = value.to_dict()
@@ -116,6 +119,7 @@ class BaseParams:
     def save_yaml(self, filepath: str) -> None:
         if not self._is_frozen:
             raise RuntimeError("'save_yaml' only works on frozen params. please run freeze() first")
+        dict_res = self.to_dict()
 
         # ==== Custom representers
         # make your own patched dumper type and use it explicitly, so you won't modify the global mutable state of PyYAML itself
@@ -135,16 +139,15 @@ class BaseParams:
         CustomDumper.add_multi_representer(PurePath, path_to_str_representer)
 
         with open(filepath, "w") as stream:
-            stream.write(yaml.dump(self.to_dict(), Dumper=CustomDumper))
+            stream.write(yaml.dump(dict_res, Dumper=CustomDumper))
 
     def freeze(self) -> None:
-        param_name_to_type_hint = get_type_hints(self)
-        for param_name in param_name_to_type_hint:
+        for name in self._name_to_type_node:
             # check empty field
-            if self._get_value_including_empty(param_name) == EMPTY_PARAM:
-                raise ValueError(f"{param_name} is empty and must be set before freeze()")
-            if param_name in self._inner_params_that_are_baseparam_class:
-                getattr(self, param_name).freeze()
+            if self._get_value_including_empty(name) == EMPTY_PARAM:
+                raise ValueError(f"{name} is empty and must be set before freeze()")
+            if name in self._inner_params_that_are_baseparam_class:
+                getattr(self, name).freeze()
 
         self._is_frozen = True
 
@@ -153,3 +156,10 @@ class BaseParams:
         if getattr(self, "_is_frozen", False):
             raise AttributeError(f"Params are frozen. Cannot modify attribute {key}")
         super().__setattr__(key, value)
+
+    def override_gui(self) -> None:
+        """Launches a NiceGUI interface to override parameters interactively."""
+        name_to_value = {name: self._get_value_including_empty(name) for name in self._name_to_type_node}
+        override_dict = run_gui(self._name_to_type_node, name_to_value)
+
+        self.override_from_dict(override_dict)
