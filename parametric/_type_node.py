@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from enum import EnumType
+from enum import EnumMeta
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -150,7 +150,7 @@ class LiteralNode(TypeNode):
 
 
 class EnumNode(TypeNode):
-    def __init__(self, enum_type: EnumType) -> None:
+    def __init__(self, enum_type: EnumMeta) -> None:
         super().__init__("Enum")
         self.enum_type = enum_type
 
