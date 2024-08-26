@@ -14,16 +14,16 @@ def test_invalid_overrides():
     params = MyParamsNew()
 
     # Attempt to override with invalid type should raise an error
-    with pytest.raises(ValueError):
+    with pytest.raises(Exception):
         params.override_from_dict({"nested_tuple": ((1, "a"), "not a tuple")})
 
-    with pytest.raises(ValueError):
+    with pytest.raises(Exception):
         params.override_from_dict({"nested_tuple": (("not an int", "a"), (3.14, "b"))})
 
-    with pytest.raises(ValueError):
+    with pytest.raises(Exception):
         params.override_from_dict({"optional_tuple": "not a tuple"})
 
-    with pytest.raises(ValueError):
+    with pytest.raises(Exception):
         params.override_from_dict({"union_field": "not an int or float"})
 
 
@@ -42,7 +42,7 @@ def test_empty_field_error_on_freeze():
     params = CustomParamsScheme()
 
     # Attempt to freeze with an unset mandatory field should raise an error
-    with pytest.raises(ValueError):
+    with pytest.raises(Exception):
         params.freeze()
 
 

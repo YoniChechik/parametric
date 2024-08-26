@@ -1,15 +1,17 @@
 import os
 import sys
-from pathlib import Path, PurePath
+from pathlib import Path
 from typing import Any, get_type_hints
 
 import yaml
 
-from parametric._const import EMPTY_PARAM
+from parametric._abstract_base_params import AbstractBaseParams
 from parametric._typehint_parsing import parse_typehint
 
+EMPTY_PARAM = "__parametric_empty_field"
 
-class BaseParams:
+
+class BaseParams(AbstractBaseParams):
     def __new__(cls, *args, **kwargs):
         if cls is BaseParams:
             raise TypeError(f"{cls.__name__} cannot be instantiated directly, only derive from")
@@ -30,26 +32,30 @@ class BaseParams:
             if value == EMPTY_PARAM:
                 continue
 
-            self._convert_and_set(name, value)
+            self._convert_and_set(name, value, is_strict=True)
 
-    def _convert_and_set(self, name, value):
-        conversion_return = self._name_to_type_node[name].convert(value)
-        if isinstance(conversion_return.converted_value, BaseParams):
+    def _convert_and_set(self, name, value, is_strict: bool):
+        if is_strict:
+            conversion_return = self._name_to_type_node[name].cast_python_strict(value)
+        else:
+            conversion_return = self._name_to_type_node[name].cast_python_relaxed(value)
+
+        if isinstance(conversion_return, BaseParams):
             self._inner_params_that_are_baseparam_class.add(name)
         else:
             self._inner_params_that_are_baseparam_class.discard(name)
-        setattr(self, name, conversion_return.converted_value)
+        setattr(self, name, conversion_return)
 
     def _get_value_including_empty(self, field_name):
         given_value = getattr(self, field_name, EMPTY_PARAM)
         return given_value
 
-    def override_from_dict(self, changed_params: dict[str, Any]):
+    def override_from_dict(self, changed_params: dict[str, Any], is_strict: bool = True) -> None:
         for name, value in changed_params.items():
             if name not in self._name_to_type_node:
                 raise RuntimeError(f"param name '{name}' does not exist")
 
-            self._convert_and_set(name, value)
+            self._convert_and_set(name, value, is_strict)
 
     def override_from_cli(self):
         argv = sys.argv[1:]  # Skip the script name
@@ -66,7 +72,7 @@ class BaseParams:
             value = argv[i + 1]
             changed_params[key] = value
 
-        self.override_from_dict(changed_params)
+        self.override_from_dict(changed_params, is_strict=False)
 
     def override_from_yaml(self, filepath: Path | str) -> None:
         filepath = Path(filepath)
@@ -78,7 +84,7 @@ class BaseParams:
         if changed_params is None:
             return
 
-        self.override_from_dict(changed_params)
+        self.override_from_dict(changed_params, is_strict=False)
 
     def override_from_envs(self, env_prefix: str = "_param_") -> None:
         # Build a dictionary mapping lowercase names to actual case-sensitive names
@@ -102,7 +108,7 @@ class BaseParams:
                 actual_name = lower_to_actual_case[param_key]
                 changed_params[actual_name] = value
 
-        self.override_from_dict(changed_params)
+        self.override_from_dict(changed_params, is_strict=False)
 
     def to_dict(self) -> dict[str, Any]:
         if not self._is_frozen:
@@ -115,30 +121,22 @@ class BaseParams:
             res_dict[field_name] = value
         return res_dict
 
+    def _to_dumpable_dict(self) -> dict[str, Any]:
+        dumpable_dict_res = {}
+        for name, type_node in self._name_to_type_node.items():
+            val = getattr(self, name)
+            if isinstance(val, BaseParams):
+                dumpable_dict_res[name] = val._to_dumpable_dict()
+            else:
+                dumpable_dict_res[name] = type_node.cast_dumpable(val)
+        return dumpable_dict_res
+
     def save_yaml(self, filepath: str) -> None:
         if not self._is_frozen:
             raise RuntimeError("'save_yaml' only works on frozen params. please run freeze() first")
-        dict_res = self.to_dict()
-
-        # ==== Custom representers
-        # make your own patched dumper type and use it explicitly, so you won't modify the global mutable state of PyYAML itself
-        class CustomDumper(yaml.SafeDumper):
-            pass
-
-        # avoid `!!python/tuple` for every tuple by converting to list
-        def tuple_to_list_representer(dumper: yaml.SafeDumper, data):
-            return dumper.represent_list(list(data))
-
-        # avoid `!!python/object/apply:pathlib...` for every Path by converting to str
-        def path_to_str_representer(dumper: yaml.SafeDumper, data):
-            return dumper.represent_scalar("tag:yaml.org,2002:str", str(data))
-
-        # Register the custom representer with PyYAML
-        CustomDumper.add_representer(tuple, tuple_to_list_representer)
-        CustomDumper.add_multi_representer(PurePath, path_to_str_representer)
 
         with open(filepath, "w") as stream:
-            stream.write(yaml.dump(dict_res, Dumper=CustomDumper))
+            yaml.dump(self._to_dumpable_dict(), stream)
 
     def freeze(self) -> None:
         for name in self._name_to_type_node:
@@ -146,7 +144,8 @@ class BaseParams:
             if self._get_value_including_empty(name) == EMPTY_PARAM:
                 raise ValueError(f"{name} is empty and must be set before freeze()")
             if name in self._inner_params_that_are_baseparam_class:
-                getattr(self, name).freeze()
+                base_params_instance: BaseParams = getattr(self, name)
+                base_params_instance.freeze()
 
         self._is_frozen = True
 
