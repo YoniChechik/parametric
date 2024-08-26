@@ -3,6 +3,7 @@ from pathlib import Path
 from types import UnionType
 from typing import Any, Literal, Tuple, Union, get_args, get_origin
 
+from parametric._abstract_base_params import AbstractBaseParams
 from parametric._type_node import (
     BaseParamsNode,
     BoolNode,
@@ -81,10 +82,7 @@ def parse_typehint(name: str, typehint: Any) -> TypeNode:
     if isinstance(typehint, type(Enum)):
         return EnumNode(typehint)
 
-    # this import is here to avoid circular imports
-    from parametric._base_params import BaseParams
-
-    if issubclass(typehint, BaseParams):
+    if issubclass(typehint, AbstractBaseParams):
         return BaseParamsNode(typehint)
 
     # ==== Raise error if the type is not handled

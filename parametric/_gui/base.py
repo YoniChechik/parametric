@@ -3,12 +3,14 @@ from typing import Any
 from nicegui import app, events, ui
 
 from parametric._type_node import (
+    BaseParamsNode,
     BoolNode,
     BytesNode,
     ComplexNode,
     FloatNode,
     IntNode,
     NoneTypeNode,
+    PathNode,
     StrNode,
     TupleNode,
     TypeNode,
@@ -24,20 +26,7 @@ def run_gui(
 
     for name, type_node in name_to_type_node.items():
         init_value = name_to_value[name]
-        ui.separator()
-        if isinstance(type_node, (IntNode, FloatNode, BytesNode, StrNode, ComplexNode)):
-            basic_input(override_dict, name, type_node, init_value)
-        elif isinstance(type_node, BoolNode):
-            bool_input(override_dict, name, init_value)
-        elif isinstance(type_node, NoneTypeNode):
-            ui.label("'None' is selected")
-        elif isinstance(type_node, TupleNode):
-            pass
-        elif isinstance(type_node, UnionNode):
-            pass
-            # for t in inner_args:
-            #     with ui.card():
-            #         pass
+        _generate_ui_element(override_dict, name, type_node, init_value)
 
     # ==== when hitting save button
     def apply_changes():
@@ -58,20 +47,55 @@ def run_gui(
     return override_dict
 
 
-def bool_input(override_dict, name, init_value):
-    ui.label(name)
+def _generate_ui_element(override_dict, name: str | None, type_node, init_value: Any):
+    if isinstance(type_node, (IntNode, FloatNode, BytesNode, StrNode, ComplexNode)):
+        _basic_input(override_dict, type_node, init_value, name)
+    elif isinstance(type_node, BoolNode):
+        _bool_input(override_dict, init_value, name)
+    elif isinstance(type_node, NoneTypeNode):
+        ui.label("'None' is selected")
+    elif isinstance(type_node, TupleNode):
+        pass
+    elif isinstance(type_node, BaseParamsNode):
+        with ui.card():
+            pass
+    elif isinstance(type_node, PathNode):
+        pass
+    elif isinstance(type_node, UnionNode):
+        with ui.card():
+            tabs_list = []
+            with ui.tabs().classes("w-full") as ui_tabs:
+                for inner_arg in type_node.inner_args:
+                    tabs_list.append(ui.tab(inner_arg.type_base_name))
+
+            with ui.tab_panels(ui_tabs, value=tabs_list[type_node.chosen_ind]).classes("w-full"):
+                for i, (inner_arg, tab) in enumerate(zip(type_node.inner_args, tabs_list)):
+                    init_value = None
+
+                    with ui.tab_panel(tab):
+                        _generate_ui_element(override_dict, None, inner_arg, init_value)
+    ui.separator()
+
+
+def _bool_input(override_dict, init_value: bool | None, name: str | None = None):
+    if name is not None:
+        ui.label(name)
+
+    value = str(init_value) if init_value is not None else None
     ui.toggle(
         ["True", "False"],
-        value=str(init_value),
+        value=value,
         on_change=lambda e, name=name, override_dict=override_dict: _on_change(e, name, override_dict),
     )
 
 
-def basic_input(override_dict: dict[str, Any], name: str, type_node: TypeNode, init_value: Any):
-    ui.label(name)
+def _basic_input(override_dict: dict[str, Any], type_node: TypeNode, init_value: Any = None, name: str | None = None):
+    if name is not None:
+        ui.label(name)
+    value = str(init_value) if init_value is not None else None
     ui.input(
-        placeholder=str(init_value),
-        value=str(init_value),
+        placeholder=value,
+        value=value,
         on_change=lambda e, name=name, override_dict=override_dict: _on_change(e, name, override_dict),
         validation={
             f"Not valid input for {type_node.type_base_name}": lambda value, type_node=type_node: _is_valid_type(
@@ -94,7 +118,7 @@ def _is_valid_type(value, type_node: TypeNode) -> bool:
         return True
 
     try:
-        type_node.convert(value)
+        type_node.cast_python_relaxed(value)
     except Exception:
         return False
     return True

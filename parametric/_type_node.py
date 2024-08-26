@@ -1,14 +1,14 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from enum import EnumType
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
+
+from parametric._abstract_base_params import AbstractBaseParams
 
 
-@dataclass
-class ConversionReturn:
-    converted_value: Any
-    is_coerced: bool
+class TypeCoercionError(Exception):
+    def __init__(self, message: str = "Type coercion error"):
+        super().__init__(message)
 
 
 class TypeNode(ABC):
@@ -19,155 +19,188 @@ class TypeNode(ABC):
         return self.type_base_name
 
     @abstractmethod
-    def convert(self, value: Any) -> ConversionReturn:
+    def _cast_python(self, value: Any, is_strict: bool) -> Any:
         pass
 
+    def cast_python_strict(self, value: Any) -> Any:
+        return self._cast_python(value, is_strict=True)
 
-class IntNode(TypeNode):
-    def __init__(self) -> None:
-        super().__init__("int")
+    def cast_python_relaxed(self, value: Any) -> Any:
+        return self._cast_python(value, is_strict=False)
 
-    def convert(self, value: Any) -> ConversionReturn:
-        if isinstance(value, int):
-            return ConversionReturn(value, False)
-        return ConversionReturn(int(value), True)
-
-
-class FloatNode(TypeNode):
-    def __init__(self) -> None:
-        super().__init__("float")
-
-    def convert(self, value: Any) -> ConversionReturn:
-        if isinstance(value, float):
-            return ConversionReturn(value, False)
-        return ConversionReturn(float(value), True)
-
-
-class ComplexNode(TypeNode):
-    def __init__(self) -> None:
-        super().__init__("complex")
-
-    def convert(self, value: Any) -> ConversionReturn:
-        if isinstance(value, complex):
-            return ConversionReturn(value, False)
-        return ConversionReturn(complex(value), True)
+    def cast_dumpable(self, value: Any) -> Any:
+        return self.cast_python_strict(value)
 
 
 class StrNode(TypeNode):
     def __init__(self) -> None:
         super().__init__("str")
 
-    def convert(self, value: Any) -> ConversionReturn:
+    def _cast_python(self, value: Any, is_strict: bool) -> str:
         if isinstance(value, str):
-            return ConversionReturn(value, False)
-        return ConversionReturn(str(value), True)
+            return value
+        if is_strict:
+            raise TypeCoercionError()
+        return str(value)
 
 
 class BoolNode(TypeNode):
     def __init__(self) -> None:
         super().__init__("bool")
 
-    def convert(self, value: Any) -> ConversionReturn:
+    def _cast_python(self, value: Any, is_strict: bool) -> bool:
         if isinstance(value, bool):
-            return ConversionReturn(value, False)
-        return ConversionReturn(bool(value), True)
+            return value
+        if is_strict:
+            raise TypeCoercionError()
+
+        if isinstance(value, str):
+            if value.lower().strip() in {"0", "-1", "off", "f", "false", "n", "no"}:
+                return False
+            elif value.lower().strip() in {"1", "on", "t", "true", "y", "yes"}:
+                return True
+        if isinstance(value, (int, float)):
+            if value == 0 or value == -1:
+                return False
+            elif value == 1:
+                return True
+        raise TypeCoercionError()
 
 
 class BytesNode(TypeNode):
     def __init__(self) -> None:
         super().__init__("bytes")
 
-    def convert(self, value: Any) -> ConversionReturn:
+    def _cast_python(self, value: Any, is_strict: bool) -> bytes:
         if isinstance(value, bytes):
-            return ConversionReturn(value, False)
-        return ConversionReturn(bytes(value), True)
+            return value
+        if is_strict:
+            raise TypeCoercionError()
+
+        return bytes(value)
+
+    def cast_dumpable(self, value: Any) -> str:
+        return str(self.cast_python_strict(value))
 
 
 class PathNode(TypeNode):
     def __init__(self) -> None:
         super().__init__("Path")
 
-    def convert(self, value: Any) -> ConversionReturn:
+    def _cast_python(self, value: Any, is_strict: bool) -> Path:
         if isinstance(value, Path):
-            return ConversionReturn(value, False)
-        return ConversionReturn(Path(value), True)
+            return value
+        if is_strict:
+            raise TypeCoercionError()
+
+        return Path(value)
+
+    def cast_dumpable(self, value: Any) -> str:
+        return str(self.cast_python_strict(value))
 
 
 class NoneTypeNode(TypeNode):
     def __init__(self) -> None:
         super().__init__("NoneType")
 
-    def convert(self, value: Any) -> ConversionReturn:
+    def _cast_python(self, value: Any, is_strict: bool) -> None:
         if value is None:
-            return ConversionReturn(None, False)
-        raise ValueError("Value is not None")
+            return None
+        raise TypeCoercionError("Value is not None")
 
 
 class BaseParamsNode(TypeNode):
-    def __init__(self, base_params_type: Any) -> None:
+    def __init__(self, base_params_type: AbstractBaseParams) -> None:
         super().__init__("BaseParams")
         self.base_params_type = base_params_type
 
-    def convert(self, value: Any) -> ConversionReturn:
-        # this import is here to avoid circular imports
-        from parametric._base_params import BaseParams
-
+    def _cast_python(self, value: Any, is_strict: bool):
         if isinstance(value, self.base_params_type):
-            return ConversionReturn(value, False)
+            return value
+        if is_strict:
+            raise TypeCoercionError()
 
         if isinstance(value, dict):
-            instance: BaseParams = self.base_params_type()
+            instance: AbstractBaseParams = self.base_params_type()
             instance.override_from_dict(value)
-            return ConversionReturn(value, True)
+            return value
 
-        raise ValueError(f"Cannot convert {value} to {self.base_params_type} (derived BaseParams)")
+        raise TypeCoercionError(f"Cannot convert {value} to {self.base_params_type} (derived BaseParams)")
 
     def __repr__(self) -> str:
         return f"{self.base_params_type.__name__}(BaseParams)"
 
-
-# ================ multi choice
-class MultiChoiceTypeNode(TypeNode):
-    def __init__(self, type_base_name: str) -> None:
-        super().__init__(type_base_name)
-        self.chosen_ind: int = -1
+    def cast_dumpable(self, value: Any) -> dict:
+        raise Exception("Can't cast dumpable")
 
 
-class LiteralNode(MultiChoiceTypeNode):
+class LiteralNode(TypeNode):
     def __init__(self, literal_args: tuple) -> None:
         super().__init__("Literal")
         self.literal_args = literal_args
 
-    def convert(self, value: Any) -> ConversionReturn:
+    def _cast_python(self, value: Any, is_strict: bool):
         if value not in self.literal_args:
-            raise ValueError(f"Value {value} is not a valid Literal")
+            raise TypeCoercionError(f"Value {value} is not a valid Literal")
 
-        self.chosen_ind = self.literal_args.index(value)
-        return ConversionReturn(value, False)
+        return value
 
     def __repr__(self) -> str:
         return f"Literal[{self.literal_args}]"
 
 
-class EnumNode(MultiChoiceTypeNode):
+class EnumNode(TypeNode):
     def __init__(self, enum_type: EnumType) -> None:
         super().__init__("Enum")
         self.enum_type = enum_type
 
-    def convert(self, value: Any) -> ConversionReturn:
-        try:
-            converted_val = self.enum_type(value)
-        except ValueError:
-            raise ValueError(f"Value {value} is not a valid {self.enum_type.__name__}")
-
-        self.chosen_ind = tuple(self.enum_type).index(converted_val)
-
-        return ConversionReturn(converted_val, False)
+    def _cast_python(self, value: Any, is_strict: bool):
+        return self.enum_type(value)
 
     def __repr__(self) -> str:
         return f"{self.enum_type.__name__}(Enum)"
 
 
+# ========= number node
+T = TypeVar("T")
+
+
+class NumberNode(TypeNode):
+    def __init__(self, type_base_name: str, conversion_function: T) -> None:
+        super().__init__(type_base_name)
+        self.conversion_function = conversion_function
+
+    def _cast_python(self, value: Any, is_strict: bool) -> T:
+        if isinstance(value, self.conversion_function):
+            return value
+        if is_strict:
+            raise TypeCoercionError()
+
+        # check for precision loss
+        number_coercion_res = self.conversion_function(value)
+        complex_coercion_res = complex(value)
+        if complex_coercion_res != number_coercion_res:
+            raise TypeCoercionError()
+
+        return number_coercion_res
+
+
+class IntNode(NumberNode):
+    def __init__(self) -> None:
+        super().__init__("int", int)
+
+
+class FloatNode(NumberNode):
+    def __init__(self) -> None:
+        super().__init__("float", float)
+
+
+class ComplexNode(NumberNode):
+    def __init__(self) -> None:
+        super().__init__("complex", complex)
+
+
+# =========== CompoundTypeNode
 class CompoundTypeNode(TypeNode):
     def __init__(self, type_base_name: str, inner_args: list[TypeNode]) -> None:
         super().__init__(type_base_name)
@@ -183,44 +216,54 @@ class TupleNode(CompoundTypeNode):
         super().__init__("Tuple", inner_args)
         self.is_ends_with_ellipsis = is_ends_with_ellipsis
 
-    def convert(self, value: Any) -> ConversionReturn:
+    def _cast_python(self, value: Any, is_strict: bool) -> tuple:
+        if is_strict and not isinstance(value, tuple):
+            raise TypeCoercionError()
+
         converted_values = []
-        is_coerced = not (isinstance(value, tuple))
         for i, v in enumerate(value):
             if self.is_ends_with_ellipsis:
                 i = 0
-            res = self.inner_args[i].convert(v)
+            res = self.inner_args[i]._cast_python(v, is_strict)
 
-            converted_values.append(res.converted_value)
-            is_coerced |= res.is_coerced
+            converted_values.append(res)
 
-        return ConversionReturn(tuple(converted_values), is_coerced)
+        return tuple(converted_values)
+
+    def cast_dumpable(self, value: Any) -> list:
+        return list(self.cast_python_strict(value))
 
 
-class UnionNode(CompoundTypeNode, MultiChoiceTypeNode):
+_precedence_list = [
+    IntNode,
+    FloatNode,
+    ComplexNode,
+    NoneTypeNode,
+    TupleNode,
+    StrNode,
+    PathNode,
+]
+_precedence = {type_node: i for i, type_node in enumerate(_precedence_list)}
+
+
+class UnionNode(CompoundTypeNode):
     def __init__(self, inner_args: list[TypeNode]) -> None:
-        MultiChoiceTypeNode.__init__(self, "Union")  # Initialize MultiChoiceTypeNode part
-        CompoundTypeNode.__init__(self, "Union", inner_args)  # Initialize CompoundTypeNode part
+        super().__init__("Union", inner_args)
+        self._check_invalid_combinations()
 
-    def convert(self, value: Any) -> ConversionReturn:
-        """Handles conversion for Union types."""
+        self.sorted_inner_args: list[TypeNode] = sorted(self.inner_args, key=lambda x: _precedence[type(x)])
 
-        best_conversion_return: ConversionReturn | None = None
+    def _check_invalid_combinations(self) -> None:
+        str_present = any(isinstance(inner_type, StrNode) for inner_type in self.inner_args)
+        path_present = any(isinstance(inner_type, PathNode) for inner_type in self.inner_args)
 
-        for i, inner_type in enumerate(self.inner_args):
+        if str_present and path_present:
+            raise TypeError("Union with both `str` and `pathlib.Path` is not allowed.")
+
+    def _cast_python(self, value: Any, is_strict: bool):
+        for inner_type in self.sorted_inner_args:
             try:
-                conversion_return = inner_type.convert(value)
-                # This is the best possible solution because it wasn't coerced. we can stop looking
-                if not conversion_return.is_coerced:
-                    self.chosen_ind = i
-                    return conversion_return
-                # second best because it is coerced - keep looking in case we get to not coerced solution
-                if best_conversion_return is None:
-                    self.chosen_ind = i
-                    best_conversion_return = conversion_return
+                return inner_type._cast_python(value, is_strict)
             except Exception:
                 continue
-
-        if best_conversion_return is not None:
-            return best_conversion_return
-        raise ValueError(f"Cannot convert {value} to anything")
+        raise TypeCoercionError()

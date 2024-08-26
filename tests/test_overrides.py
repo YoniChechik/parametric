@@ -11,7 +11,7 @@ from parametric import BaseParams
 
 class MyValidationParams(BaseParams):
     validation_batch_size: int = 8
-    validation_save_dir: Path = "/my_dir"
+    validation_save_dir: Path = Path("/my_dir")
 
 
 class MyParams(BaseParams):
@@ -20,7 +20,7 @@ class MyParams(BaseParams):
     image_shape: tuple[int, int] = (640, 480)
     dataset_name: Literal["a", "b", "c"] = "a"
     nn_encoder_name: str = "efficientnet-b0"
-    save_dir_path: Path | None = "/my/path"
+    save_dir_path: Path | None = Path("/my/path")
     complex_number: complex = 1000 + 1j
     some_bytes: bytes = b"abc123"
     init_lr: float = 1e-4
