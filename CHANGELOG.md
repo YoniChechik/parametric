@@ -1,3 +1,4 @@
+- Strictand relaxed type conversion (#58)
 
 ## [0.3.0] - 2024-08-20
 
