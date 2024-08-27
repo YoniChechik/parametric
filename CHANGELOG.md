@@ -1,3 +1,4 @@
+- support tuple[x] means any amount of var of type x (#59)
 - Strict and relaxed type conversion (#58)
 
 ## [0.3.0] - 2024-08-20
