@@ -1,3 +1,7 @@
+
+## [0.4.0] - 2024-08-27
+
+- Return overrides dict (#60)
 - support tuple[x] means any amount of var of type x (#59)
 - Strict and relaxed type conversion (#58)
 
