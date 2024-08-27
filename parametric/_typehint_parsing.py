@@ -25,7 +25,7 @@ from parametric._type_node import (
 class EllipsisTypeError(Exception):
     def __init__(self, name: str):
         super().__init__(
-            f"Ellipsis (`...`) is only allowed in this typehint format `(x, ...)`, cannot convert '{name}'"
+            f"Ellipsis (`...`) is only allowed in this typehint format `tuple(x, ...)`, cannot convert '{name}'"
         )
 
 
