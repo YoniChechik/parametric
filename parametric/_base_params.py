@@ -1,11 +1,20 @@
 import os
-import sys
 from pathlib import Path
 from typing import Any, get_type_hints
 
 import yaml
 
 from parametric._abstract_base_params import AbstractBaseParams
+from parametric._type_node import (
+    BoolNode,
+    BytesNode,
+    EnumNode,
+    LiteralNode,
+    NoneTypeNode,
+    NumberNode,
+    PathNode,
+    StrNode,
+)
 from parametric._typehint_parsing import parse_typehint
 
 EMPTY_PARAM = "__parametric_empty_field"
@@ -34,47 +43,51 @@ class BaseParams(AbstractBaseParams):
 
             self._convert_and_set(name, value, is_strict=True)
 
-    def _convert_and_set(self, name, value, is_strict: bool):
+    def _convert_and_set(self, name, value, is_strict: bool) -> dict[str, Any]:
         if is_strict:
-            conversion_return = self._name_to_type_node[name].cast_python_strict(value)
+            converted_val = self._name_to_type_node[name].cast_python_strict(value)
         else:
-            conversion_return = self._name_to_type_node[name].cast_python_relaxed(value)
+            converted_val = self._name_to_type_node[name].cast_python_relaxed(value)
 
-        if isinstance(conversion_return, BaseParams):
+        if isinstance(converted_val, BaseParams):
             self._inner_params_that_are_baseparam_class.add(name)
         else:
             self._inner_params_that_are_baseparam_class.discard(name)
-        setattr(self, name, conversion_return)
+        setattr(self, name, converted_val)
+        return {name: converted_val}
 
     def _get_value_including_empty(self, field_name):
         given_value = getattr(self, field_name, EMPTY_PARAM)
         return given_value
 
-    def override_from_dict(self, changed_params: dict[str, Any], is_strict: bool = True) -> None:
+    def override_from_dict(self, changed_params: dict[str, Any], is_strict: bool = True) -> dict[str, Any]:
+        override_dict = {}
         for name, value in changed_params.items():
             if name not in self._name_to_type_node:
                 raise RuntimeError(f"param name '{name}' does not exist")
 
-            self._convert_and_set(name, value, is_strict)
+            override_dict |= self._convert_and_set(name, value, is_strict)
+        return override_dict
 
-    def override_from_cli(self):
-        argv = sys.argv[1:]  # Skip the script name
-        if len(argv) % 2 != 0:
-            raise RuntimeError(
-                "Got odd amount of space separated strings as CLI inputs. Must be even as '--key value' pairs",
-            )
-        changed_params = {}
-        for i in range(0, len(argv), 2):
-            key = argv[i]
-            if not key.startswith("--"):
-                raise RuntimeError(f"Invalid argument key: {key}. Argument keys must start with '--'.")
-            key = key.lstrip("-")
-            value = argv[i + 1]
-            changed_params[key] = value
+    def override_from_cli(self) -> dict[str, Any]:
+        import argparse
 
-        self.override_from_dict(changed_params, is_strict=False)
+        # Initialize the parser
+        parser = argparse.ArgumentParser()
 
-    def override_from_yaml(self, filepath: Path | str) -> None:
+        # Add arguments
+        for name, type_node in self._name_to_type_node.items():
+            if isinstance(
+                type_node, (NumberNode, StrNode, BoolNode, BytesNode, PathNode, NoneTypeNode, LiteralNode, EnumNode)
+            ):
+                parser.add_argument(f"--{name}", type=str, required=False, default=str(getattr(self, name)))
+
+        args = parser.parse_args()
+        changed_params = {k: v for k, v in vars(args).items() if parser.get_default(k) != v}
+
+        return self.override_from_dict(changed_params, is_strict=False)
+
+    def override_from_yaml(self, filepath: Path | str) -> dict[str, Any]:
         filepath = Path(filepath)
         if not filepath.is_file():
             return
@@ -84,9 +97,9 @@ class BaseParams(AbstractBaseParams):
         if changed_params is None:
             return
 
-        self.override_from_dict(changed_params, is_strict=False)
+        return self.override_from_dict(changed_params, is_strict=False)
 
-    def override_from_envs(self, env_prefix: str = "_param_") -> None:
+    def override_from_envs(self, env_prefix: str = "_param_") -> dict[str, Any]:
         # Build a dictionary mapping lowercase names to actual case-sensitive names
         lower_to_actual_case = {}
         for name in self._name_to_type_node:
@@ -108,7 +121,7 @@ class BaseParams(AbstractBaseParams):
                 actual_name = lower_to_actual_case[param_key]
                 changed_params[actual_name] = value
 
-        self.override_from_dict(changed_params, is_strict=False)
+        return self.override_from_dict(changed_params, is_strict=False)
 
     def to_dict(self) -> dict[str, Any]:
         if not self._is_frozen:
