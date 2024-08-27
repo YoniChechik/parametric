@@ -214,7 +214,7 @@ class CompoundTypeNode(TypeNode):
 class TupleNode(CompoundTypeNode):
     def __init__(self, inner_args: list[TypeNode], is_ends_with_ellipsis: bool = False) -> None:
         super().__init__("Tuple", inner_args)
-        self.is_ends_with_ellipsis = is_ends_with_ellipsis
+        self.is_any_length = is_ends_with_ellipsis | len(inner_args) == 1
 
     def _cast_python(self, value: Any, is_strict: bool) -> tuple:
         if is_strict and not isinstance(value, tuple):
@@ -222,7 +222,7 @@ class TupleNode(CompoundTypeNode):
 
         converted_values = []
         for i, v in enumerate(value):
-            if self.is_ends_with_ellipsis:
+            if self.is_any_length:
                 i = 0
             res = self.inner_args[i]._cast_python(v, is_strict)
 
