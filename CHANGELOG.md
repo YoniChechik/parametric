@@ -1,3 +1,4 @@
+- add pycov for coverage (#62)
 
 ## [0.4.0] - 2024-08-27
 
