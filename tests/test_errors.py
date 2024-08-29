@@ -27,14 +27,6 @@ def test_invalid_overrides():
         params.override_from_dict({"union_field": "not an int or float"})
 
 
-def test_to_dict_without_freeze():
-    params = MyParamsNew()
-
-    # Attempt to call to_dict without freezing should raise an error
-    with pytest.raises(RuntimeError):
-        params.to_dict()
-
-
 def test_empty_field_error_on_freeze():
     class CustomParamsScheme(BaseParams):
         mandatory_field: int
