@@ -1,3 +1,4 @@
+import copy
 import os
 from pathlib import Path
 from typing import Any, get_type_hints
@@ -34,6 +35,7 @@ class BaseParams(AbstractBaseParams):
         self._name_to_type_node = {
             name: parse_typehint(name, typehint) for name, typehint in get_type_hints(self).items()
         }
+        self._default_values = {}
         for name in self._name_to_type_node:
             value = self._get_value_including_empty(name)
 
@@ -41,7 +43,20 @@ class BaseParams(AbstractBaseParams):
             if value == EMPTY_PARAM:
                 continue
 
-            self._convert_and_set(name, value, is_strict=True)
+            self._default_values |= self._convert_and_set(name, value, is_strict=True)
+
+    def get_defaults_dict(self) -> dict[str, Any]:
+        return copy.deepcopy(self._default_values)
+
+    def get_overrides_dict(self) -> dict[str, Any]:
+        res_dict = self.to_dict()
+        overrides_dict = {}
+        for name in self._name_to_type_node:
+            if name not in self._default_values and name in res_dict:
+                overrides_dict[name] = res_dict[name]
+            if res_dict[name] != self._default_values[name]:
+                overrides_dict[name] = res_dict[name]
+        return copy.deepcopy(overrides_dict)
 
     def _convert_and_set(self, name, value, is_strict: bool) -> dict[str, Any]:
         if is_strict:
@@ -124,11 +139,11 @@ class BaseParams(AbstractBaseParams):
         return self.override_from_dict(changed_params, is_strict=False)
 
     def to_dict(self) -> dict[str, Any]:
-        if not self._is_frozen:
-            raise RuntimeError("'to_dict' only works on frozen params. please run freeze() first")
         res_dict = {}
         for field_name in self._name_to_type_node:
-            value = getattr(self, field_name)
+            value = self._get_value_including_empty(field_name)
+            if value == EMPTY_PARAM:
+                continue
             if isinstance(value, BaseParams):
                 value = value.to_dict()
             res_dict[field_name] = value
@@ -137,7 +152,9 @@ class BaseParams(AbstractBaseParams):
     def _to_dumpable_dict(self) -> dict[str, Any]:
         dumpable_dict_res = {}
         for name, type_node in self._name_to_type_node.items():
-            val = getattr(self, name)
+            val = self._get_value_including_empty(name)
+            if val == EMPTY_PARAM:
+                continue
             if isinstance(val, BaseParams):
                 dumpable_dict_res[name] = val._to_dumpable_dict()
             else:
@@ -145,9 +162,6 @@ class BaseParams(AbstractBaseParams):
         return dumpable_dict_res
 
     def save_yaml(self, filepath: str) -> None:
-        if not self._is_frozen:
-            raise RuntimeError("'save_yaml' only works on frozen params. please run freeze() first")
-
         with open(filepath, "w") as stream:
             yaml.dump(self._to_dumpable_dict(), stream)
 
