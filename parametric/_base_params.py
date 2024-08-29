@@ -18,7 +18,7 @@ from parametric._type_node import (
 )
 from parametric._typehint_parsing import parse_typehint
 
-EMPTY_PARAM = "__parametric_empty_field"
+EMPTY_PARAM = "___parametric_empty_field"
 
 
 class BaseParams(AbstractBaseParams):
