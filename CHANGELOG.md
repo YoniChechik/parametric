@@ -1,3 +1,7 @@
+## [0.4.1] - 2024-08-31
+
+- fix changelog built only on releases and other action fixes
+- ___parametric_empty_field (#64)
 - `get_defaults_dict` and `get_overrides_dict` and freeze not mandatory on `to_dict` (#63)
 - add pycov for coverage (#62)
 
