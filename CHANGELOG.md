@@ -1,13 +1,7 @@
 ## [0.4.1] - 2024-08-31
 
-- fix changelog built only on releases
+- fix changelog built only on releases and other action fixes
 - ___parametric_empty_field (#64)
-- Merge branch 'main' of github.com:YoniChechik/parametric
-- pr action fixed
-- `get_defaults_dict` and `get_overrides_dict` and freeze not mandatory on `to_dict` (#63)
-- fix github actions
-- add pycov for coverage (#62)
-
 - `get_defaults_dict` and `get_overrides_dict` and freeze not mandatory on `to_dict` (#63)
 - add pycov for coverage (#62)
 
