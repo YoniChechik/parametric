@@ -33,7 +33,7 @@ class BaseParams(AbstractBaseParams):
 
         # ==== convert all on init
         self._name_to_type_node = {
-            name: parse_typehint(name, typehint) for name, typehint in get_type_hints(self).items()
+            name: parse_typehint(name, typehint) for name, typehint in self._get_all_type_hints().items()
         }
         self._default_values = {}
         for name in self._name_to_type_node:
@@ -44,6 +44,18 @@ class BaseParams(AbstractBaseParams):
                 continue
 
             self._default_values |= self._convert_and_set(name, value, is_strict=True)
+
+        # flag for finishing init for __setattr__
+        self._is_init_finished = True
+
+    @classmethod
+    def _get_all_type_hints(cls) -> dict[str, Any]:
+        hints: dict[str, Any] = {}
+        # manually traverse the method resolution order (MRO) and collect type hints from all base classes.
+        for base in reversed(cls.__mro__):
+            if base is not object:  # Ignore the top-level object class
+                hints.update(get_type_hints(base))
+        return hints
 
     def get_defaults_dict(self) -> dict[str, Any]:
         return copy.deepcopy(self._default_values)
@@ -75,16 +87,15 @@ class BaseParams(AbstractBaseParams):
         given_value = getattr(self, field_name, EMPTY_PARAM)
         return given_value
 
-    def override_from_dict(self, changed_params: dict[str, Any], is_strict: bool = True) -> dict[str, Any]:
+    def override_from_dict(self, changed_params: dict[str, Any], is_strict: bool = True) -> None:
         override_dict = {}
         for name, value in changed_params.items():
             if name not in self._name_to_type_node:
                 raise RuntimeError(f"param name '{name}' does not exist")
 
             override_dict |= self._convert_and_set(name, value, is_strict)
-        return override_dict
 
-    def override_from_cli(self) -> dict[str, Any]:
+    def override_from_cli(self) -> None:
         import argparse
 
         # Initialize the parser
@@ -95,14 +106,14 @@ class BaseParams(AbstractBaseParams):
             if isinstance(
                 type_node, (NumberNode, StrNode, BoolNode, BytesNode, PathNode, NoneTypeNode, LiteralNode, EnumNode)
             ):
-                parser.add_argument(f"--{name}", type=str, required=False, default=str(getattr(self, name)))
+                parser.add_argument(f"--{name}", type=str, required=False)
 
         args = parser.parse_args()
         changed_params = {k: v for k, v in vars(args).items() if parser.get_default(k) != v}
 
-        return self.override_from_dict(changed_params, is_strict=False)
+        self.override_from_dict(changed_params, is_strict=False)
 
-    def override_from_yaml(self, filepath: Path | str) -> dict[str, Any]:
+    def override_from_yaml(self, filepath: Path | str) -> None:
         filepath = Path(filepath)
         if not filepath.is_file():
             return
@@ -112,9 +123,9 @@ class BaseParams(AbstractBaseParams):
         if changed_params is None:
             return
 
-        return self.override_from_dict(changed_params, is_strict=False)
+        self.override_from_dict(changed_params, is_strict=False)
 
-    def override_from_envs(self, env_prefix: str = "_param_") -> dict[str, Any]:
+    def override_from_envs(self, env_prefix: str = "_param_") -> None:
         # Build a dictionary mapping lowercase names to actual case-sensitive names
         lower_to_actual_case = {}
         for name in self._name_to_type_node:
@@ -136,7 +147,7 @@ class BaseParams(AbstractBaseParams):
                 actual_name = lower_to_actual_case[param_key]
                 changed_params[actual_name] = value
 
-        return self.override_from_dict(changed_params, is_strict=False)
+        self.override_from_dict(changed_params, is_strict=False)
 
     def to_dict(self) -> dict[str, Any]:
         res_dict = {}
@@ -177,7 +188,15 @@ class BaseParams(AbstractBaseParams):
         self._is_frozen = True
 
     def __setattr__(self, key, value):
-        # NOTE: in the init phase _is_frozen is not yet declared, but setattr is called when we make new vars, so we default to False here
-        if getattr(self, "_is_frozen", False):
+        # user defined vars are created before __init__, so self._is_init_finished doesn't exist
+        # in this case we simply want to create this variable without any checks
+        if getattr(self, "_is_init_finished", None) is None:
+            super().__setattr__(key, value)
+            return
+
+        if (key not in self._name_to_type_node) and (key != "_is_frozen"):
+            raise AttributeError(f"Can't set undefined parameter {key}")
+
+        if self._is_frozen:
             raise AttributeError(f"Params are frozen. Cannot modify attribute {key}")
         super().__setattr__(key, value)

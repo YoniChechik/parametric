@@ -1,52 +1,41 @@
 import pytest
 
-from parametric._base_params import BaseParams
+from tests.conftest import MyParams
 
 
-class MyParamsNew(BaseParams):
-    nested_tuple: tuple[tuple[int, str], tuple[float, str]] = ((1, "a"), (3.14, "b"))
-    optional_tuple: tuple[int, int, int] | None = (1, 2, 3)
-    union_field: int | float = 42
-    tuple_of_int_or_str: tuple[int | str, ...] = ("key1", 1)
-
-
-def test_invalid_overrides():
-    params = MyParamsNew()
-
+def test_invalid_overrides(params: MyParams):
     # Attempt to override with invalid type should raise an error
     with pytest.raises(Exception):
-        params.override_from_dict({"nested_tuple": ((1, "a"), "not a tuple")})
+        params.override_from_dict({"t03": ((1, "a"), "not a tuple")})
 
     with pytest.raises(Exception):
-        params.override_from_dict({"nested_tuple": (("not an int", "a"), (3.14, "b"))})
+        params.override_from_dict({"t03": (("not an int", "a"), (3.14, "b"))})
 
     with pytest.raises(Exception):
-        params.override_from_dict({"optional_tuple": "not a tuple"})
+        params.override_from_dict({"t04": "not a tuple"})
 
     with pytest.raises(Exception):
-        params.override_from_dict({"union_field": "not an int or float"})
+        params.override_from_dict({"i04": "not an int or float"})
 
 
-def test_empty_field_error_on_freeze():
-    class CustomParamsScheme(BaseParams):
-        mandatory_field: int
-
-    params = CustomParamsScheme()
-
+def test_empty_field_error_on_freeze(params: MyParams):
     # Attempt to freeze with an unset mandatory field should raise an error
     with pytest.raises(Exception):
         params.freeze()
 
 
-def test_change_after_freeze():
-    params = MyParamsNew()
-    params.nested_tuple = ((1, "c"), (3.14, "d"))
+def test_change_after_freeze(params: MyParams):
+    params.t03 = ((1, "c"), (3.14, "d"))
+
+    # empty params to fill before freeze
+    params.em01 = 123
+    params.bp01.em01 = 456
 
     params.freeze()
 
     with pytest.raises(BaseException):
-        params.nested_tuple = ((2, "xxx"), (2, "xxx"))
+        params.t03 = ((2, "xxx"), (2, "xxx"))
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    pytest.main(["--no-cov", "-v", __file__])

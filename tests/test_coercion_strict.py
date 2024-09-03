@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Tuple, Union
 
 import pytest
@@ -68,11 +67,6 @@ def test_invalid_typehint_strict():
         parse_and_cast_strict(1, Union)
 
 
-def test_union_type_error_on_str_path_union_strict():
-    with pytest.raises(TypeError, match="Union with both `str` and `pathlib.Path` is not allowed."):
-        parse_and_cast_strict("some_string", str | Path)
-
-
 def test_bool_node_true_values_strict():
     assert parse_and_cast_strict(True, bool) is True
 
@@ -103,4 +97,4 @@ def test_bool_node_invalid_values_strict():
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    pytest.main(["--no-cov", "-v", __file__])

@@ -1,98 +1,87 @@
 import os
 import sys
-from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Literal
 
 import pytest
 
-from parametric import BaseParams
+from tests.conftest import MyParams
 
 
-class MyValidationParams(BaseParams):
-    validation_batch_size: int = 8
-    validation_save_dir: Path = Path("/my_dir")
+def test_cli_overrides(monkeypatch: pytest.MonkeyPatch, params: MyParams):
+    # Test for b04 set to True with different values
+    for true_value in ["true", "True", "1", "t"]:
+        test_args = f"script_name.py --i01 11 --s01 aaa --b04 {true_value}".split()
+
+        monkeypatch.setattr(sys, "argv", test_args)
+
+        params.override_from_cli()
+
+        assert params.i01 == 11
+        assert params.s01 == "aaa"
+        assert params.b04 is True  # Check if b04 is correctly set to True
+
+    # Test for b04 set to False with different values
+    for false_value in ["false", "False", "0", "f"]:
+        test_args = f"script_name.py --i01 11 --s01 aaa --b04 {false_value}".split()
+
+        monkeypatch.setattr(sys, "argv", test_args)
+
+        params.override_from_cli()
+
+        assert params.i01 == 11
+        assert params.s01 == "aaa"
+        assert params.b04 is False  # Check if b04 is correctly set to False
 
 
-class MyParams(BaseParams):
-    num_classes_without_bg: int = 5
-    scheduler_name: str | None = None
-    image_shape: tuple[int, int] = (640, 480)
-    dataset_name: Literal["a", "b", "c"] = "a"
-    nn_encoder_name: str = "efficientnet-b0"
-    save_dir_path: Path | None = Path("/my/path")
-    complex_number: complex = 1000 + 1j
-    some_bytes: bytes = b"abc123"
-    init_lr: float = 1e-4
-    is_dropout: bool = False
-    data_dirs: tuple[Path, ...]
-    validation: MyValidationParams = MyValidationParams()
-
-
-def test_cli_overrides(monkeypatch):
-    # Setup mock command line arguments
-    test_args = "script_name.py --dataset_name c --num_classes_without_bg 3".split()
-
-    monkeypatch.setattr(sys, "argv", test_args)
-
-    params = MyParams()
-    params.override_from_cli()
-
-    assert params.num_classes_without_bg == 3
-    assert params.dataset_name == "c"
-
-
-def test_env_overrides(monkeypatch):
+def test_env_overrides(monkeypatch: pytest.MonkeyPatch, params: MyParams):
     # Setup mock environment variables
-    monkeypatch.setenv("_param_dataset_name", "b")
+    monkeypatch.setenv("_param_f03", "12.5")
 
-    params = MyParams()
     params.override_from_envs()
 
-    assert params.dataset_name == "b"
+    assert params.f03 == 12.5
 
 
-def test_yaml_overrides():
+def test_yaml_overrides(params: MyParams):
     # Mock YAML file content
-    yaml_content = "init_lr: 0.001"
+    yaml_content = "f04: 0.001"
 
     with NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp_yaml:
         tmp_yaml_name = tmp_yaml.name
         tmp_yaml.write(yaml_content)
 
-    params = MyParams()
     params.override_from_yaml(tmp_yaml_name)
 
-    assert params.init_lr == 0.001
+    assert params.f04 == 0.001
 
     os.remove(tmp_yaml_name)
 
 
-def test_combined_overrides(monkeypatch):
+def test_combined_overrides(monkeypatch: pytest.MonkeyPatch, params: MyParams):
     # Setup mock command line arguments
-    test_args = "script_name.py --num_classes_without_bg 3".split()
+    test_args = "script_name.py --i01 11 --s01 aaa".split()
     monkeypatch.setattr(sys, "argv", test_args)
 
     # Setup mock environment variables
-    monkeypatch.setenv("_param_dataset_name", "b")
+    monkeypatch.setenv("_param_f03", "12.5")
 
     # Mock YAML file content
-    yaml_content = "init_lr: 0.001"
+    yaml_content = "f04: 0.001"
     with NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp_yaml:
         tmp_yaml_name = tmp_yaml.name
         tmp_yaml.write(yaml_content)
 
-    params = MyParams()
     params.override_from_cli()
     params.override_from_yaml(tmp_yaml_name)
     params.override_from_envs()
 
     os.remove(tmp_yaml_name)
 
-    assert params.num_classes_without_bg == 3
-    assert params.dataset_name == "b"
-    assert params.init_lr == 0.001
+    assert params.i01 == 11
+    assert params.s01 == "aaa"
+    assert params.f03 == 12.5
+    assert params.f04 == 0.001
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    pytest.main(["--no-cov", "-v", __file__])
