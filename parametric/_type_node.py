@@ -199,6 +199,9 @@ class ComplexNode(NumberNode):
     def __init__(self) -> None:
         super().__init__("complex", complex)
 
+    def cast_dumpable(self, value: Any) -> str:
+        return str(self.cast_python_strict(value))
+
 
 # =========== CompoundTypeNode
 class CompoundTypeNode(TypeNode):
@@ -216,30 +219,43 @@ class TupleNode(CompoundTypeNode):
         super().__init__("Tuple", inner_args)
         self.is_any_length = is_ends_with_ellipsis | len(inner_args) == 1
 
+    def _cast_prolog(self, value: Any, is_strict: bool) -> list[tuple[TypeNode, Any]]:
+        if is_strict and not isinstance(value, tuple):
+            raise TypeCoercionError()
+
+        res = []
+        for i, v in enumerate(value):
+            if self.is_any_length:
+                i = 0
+            res.append((self.inner_args[i], v))
+        return res
+
     def _cast_python(self, value: Any, is_strict: bool) -> tuple:
         if is_strict and not isinstance(value, tuple):
             raise TypeCoercionError()
 
         converted_values = []
-        for i, v in enumerate(value):
-            if self.is_any_length:
-                i = 0
-            res = self.inner_args[i]._cast_python(v, is_strict)
+        for node, v in self._cast_prolog(value, is_strict):
+            res = node._cast_python(v, is_strict)
 
             converted_values.append(res)
 
         return tuple(converted_values)
 
     def cast_dumpable(self, value: Any) -> list:
-        return list(self.cast_python_strict(value))
+        return list(node.cast_dumpable(v) for node, v in self._cast_prolog(value, is_strict=True))
 
 
 _precedence_list = [
+    EnumNode,
+    LiteralNode,
+    BoolNode,
     IntNode,
     FloatNode,
     ComplexNode,
     NoneTypeNode,
     TupleNode,
+    BytesNode,
     StrNode,
     PathNode,
 ]
@@ -249,21 +265,21 @@ _precedence = {type_node: i for i, type_node in enumerate(_precedence_list)}
 class UnionNode(CompoundTypeNode):
     def __init__(self, inner_args: list[TypeNode]) -> None:
         super().__init__("Union", inner_args)
-        self._check_invalid_combinations()
 
         self.sorted_inner_args: list[TypeNode] = sorted(self.inner_args, key=lambda x: _precedence[type(x)])
-
-    def _check_invalid_combinations(self) -> None:
-        str_present = any(isinstance(inner_type, StrNode) for inner_type in self.inner_args)
-        path_present = any(isinstance(inner_type, PathNode) for inner_type in self.inner_args)
-
-        if str_present and path_present:
-            raise TypeError("Union with both `str` and `pathlib.Path` is not allowed.")
 
     def _cast_python(self, value: Any, is_strict: bool):
         for inner_type in self.sorted_inner_args:
             try:
                 return inner_type._cast_python(value, is_strict)
+            except Exception:
+                continue
+        raise TypeCoercionError()
+
+    def cast_dumpable(self, value: Any):
+        for inner_type in self.sorted_inner_args:
+            try:
+                return inner_type.cast_dumpable(value)
             except Exception:
                 continue
         raise TypeCoercionError()
