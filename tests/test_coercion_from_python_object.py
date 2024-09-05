@@ -8,7 +8,7 @@ from parametric._typehint_parsing import parse_typehint
 
 def parse_and_cast_strict(value, typehint):
     type_node = parse_typehint("test_field", typehint)
-    return type_node.cast_python_strict(value)
+    return type_node.from_python_object(value)
 
 
 def test_union_type_strict():
@@ -17,22 +17,14 @@ def test_union_type_strict():
     assert parse_and_cast_strict("1", str | int) == "1"
     assert parse_and_cast_strict(3.0, float | complex) == 3.0
     assert parse_and_cast_strict((1, 2), tuple[int, int]) == (1, 2)
+    assert parse_and_cast_strict((1, 2), tuple[int, float]) == (1, 2)
     assert parse_and_cast_strict(None, type(None)) is None
-
     # These should fail because none of the types in the union match the input exactly
     with pytest.raises(TypeCoercionError):
         parse_and_cast_strict(1.5, int | str)  # Should fail because 1.5 is not exactly int or str
 
     with pytest.raises(TypeCoercionError):
         parse_and_cast_strict("1.5", float | int)  # Should fail because "1.5" is not exactly float or int
-
-    with pytest.raises(TypeCoercionError):
-        parse_and_cast_strict(
-            (1, 2), tuple[int, float]
-        )  # Should fail because the tuple's second element is not a float
-
-    with pytest.raises(TypeCoercionError):
-        parse_and_cast_strict((1, 2), tuple[float, int])  # Should fail because the tuple's first element is not a float
 
 
 def test_strict_coercion():

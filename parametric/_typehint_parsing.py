@@ -3,7 +3,7 @@ from pathlib import Path
 from types import UnionType
 from typing import Any, Literal, Tuple, Union, get_args, get_origin
 
-from parametric._abstract_base_params import AbstractBaseParams
+from parametric._helpers import AbstractBaseParams
 from parametric._type_node import (
     BaseParamsNode,
     BoolNode,

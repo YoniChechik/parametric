@@ -20,8 +20,6 @@ def test_save_yaml(params: MyParams):
     with open(tmp_yaml_name) as f:
         loaded_params = f.read()
 
-    os.remove(tmp_yaml_name)
-
     expected_yaml = (
         "b03: null\n"
         "b04: true\n"
@@ -29,7 +27,7 @@ def test_save_yaml(params: MyParams):
         "  b03: null\n"
         "  b04: true\n"
         "  by03: null\n"
-        "  by04: b'default'\n"
+        "  by04: default\n"
         "  c03: null\n"
         "  c04: (1+2j)\n"
         "  c05: (3+4j)\n"
@@ -80,7 +78,7 @@ def test_save_yaml(params: MyParams):
         "  - key1\n"
         "  - 1\n"
         "by03: null\n"
-        "by04: b'default'\n"
+        "by04: default\n"
         "c03: null\n"
         "c04: (1+2j)\n"
         "c05: (3+4j)\n"
@@ -133,6 +131,12 @@ def test_save_yaml(params: MyParams):
     )
 
     _compare_strings_with_multiple_newlines(loaded_params, expected_yaml)
+
+    params2 = MyParams()
+    params2.override_from_yaml(tmp_yaml_name)
+
+    os.remove(tmp_yaml_name)
+    assert params == params2
 
 
 def _compare_strings_with_multiple_newlines(string1: str, string2: str) -> None:
