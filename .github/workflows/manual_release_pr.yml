@@ -55,9 +55,11 @@ jobs:
         run: |
           pip install pytest dist/*.whl
 
-      - name: Run tests
-        # ignore existing configuration file and run only the tests dir with the installed package and not the src dir from the repo
-        run: pytest -c /dev/null --rootdir ./tests
+      - name: Create tests directory and copy files
+        run: |
+          mkdir -p /tests
+          cp -r ./tests/* /tests
+          pytest --no-cov -c /dev/null --rootdir /tests
 
       - name: Create a Pull Request
         uses: peter-evans/create-pull-request@v6
