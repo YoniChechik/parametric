@@ -60,7 +60,7 @@ jobs:
           # move the src dir so tests will run on package
           mv parametric/ parametric_backup/
           # ignore existing configuration file and run only the tests dir with the installed package and not the src dir from the repo
-          pytest -c /dev/null --rootdir ./tests
+          pytest -c /dev/null
           mv parametric_backup/ parametric/
 
       - name: Create a Pull Request
