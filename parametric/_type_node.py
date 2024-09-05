@@ -1,9 +1,8 @@
-from abc import ABC, abstractmethod
-from enum import EnumMeta
+from enum import Enum, EnumMeta
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Generic, Literal, Tuple, TypeVar, Union
 
-from parametric._abstract_base_params import AbstractBaseParams
+from parametric._helpers import AbstractBaseParams, ConversionFromType
 
 
 class TypeCoercionError(Exception):
@@ -11,135 +10,164 @@ class TypeCoercionError(Exception):
         super().__init__(message)
 
 
-class TypeNode(ABC):
-    def __init__(self, type_base_name: str) -> None:
-        self.type_base_name = type_base_name
+T = TypeVar("T")
+
+
+class TypeNode(Generic[T]):
+    def __init__(self, type: Any) -> None:
+        self.type = type
 
     def __repr__(self) -> str:
-        return self.type_base_name
+        return self.type.__name__
 
-    @abstractmethod
-    def _cast_python(self, value: Any, is_strict: bool) -> Any:
-        pass
-
-    def cast_python_strict(self, value: Any) -> Any:
-        return self._cast_python(value, is_strict=True)
-
-    def cast_python_relaxed(self, value: Any) -> Any:
-        return self._cast_python(value, is_strict=False)
-
-    def cast_dumpable(self, value: Any) -> Any:
-        return self.cast_python_strict(value)
-
-
-class StrNode(TypeNode):
-    def __init__(self) -> None:
-        super().__init__("str")
-
-    def _cast_python(self, value: Any, is_strict: bool) -> str:
-        if isinstance(value, str):
+    def from_python_object(self, value: Any) -> T:
+        if isinstance(value, self.type):
             return value
-        if is_strict:
+        raise TypeCoercionError()
+
+    def from_dumpable(self, value: Any) -> T:
+        return self.from_python_object(value)
+
+    def from_str(self, value: str) -> T:
+        if not isinstance(value, str):
+            raise TypeCoercionError()
+        return self.from_dumpable(value)
+
+    def to_dumpable(self, value: T) -> T:
+        if isinstance(value, self.type):
+            return value
+        raise TypeCoercionError()
+
+
+class IntNode(TypeNode[int]):
+    def __init__(self) -> None:
+        super().__init__(int)
+
+    def from_str(self, value: str) -> int:
+        if not isinstance(value, str):
+            raise TypeCoercionError()
+        return int(value)
+
+
+class FloatNode(TypeNode[float]):
+    def __init__(self) -> None:
+        super().__init__(float)
+
+    def from_python_object(self, value: float) -> float:
+        if isinstance(value, float) or isinstance(value, int):
+            return float(value)
+        raise TypeCoercionError()
+
+    def from_str(self, value: str) -> int:
+        if not isinstance(value, str):
+            raise TypeCoercionError()
+        return float(value)
+
+
+class ComplexNode(TypeNode[complex]):
+    def __init__(self) -> None:
+        super().__init__(complex)
+
+    def from_dumpable(self, value: str) -> complex:
+        if isinstance(value, str):
+            return complex(value)
+        raise TypeCoercionError()
+
+    def to_dumpable(self, value: complex) -> str:
+        if isinstance(value, complex):
+            return str(value)
+        raise TypeCoercionError()
+
+
+class StrNode(TypeNode[str]):
+    def __init__(self) -> None:
+        super().__init__(str)
+
+    def from_str(self, value: str) -> str:
+        if not isinstance(value, str):
             raise TypeCoercionError()
         return str(value)
 
 
-class BoolNode(TypeNode):
+class BoolNode(TypeNode[bool]):
     def __init__(self) -> None:
-        super().__init__("bool")
+        super().__init__(bool)
 
-    def _cast_python(self, value: Any, is_strict: bool) -> bool:
-        if isinstance(value, bool):
-            return value
-        if is_strict:
+    def from_str(self, value: str) -> bool:
+        if not isinstance(value, str):
             raise TypeCoercionError()
-
-        if isinstance(value, str):
-            if value.lower().strip() in {"0", "-1", "off", "f", "false", "n", "no"}:
-                return False
-            elif value.lower().strip() in {"1", "on", "t", "true", "y", "yes"}:
-                return True
-        if isinstance(value, (int, float)):
-            if value == 0 or value == -1:
-                return False
-            elif value == 1:
-                return True
+        if value.lower().strip() in {"0", "-1", "off", "f", "false", "n", "no"}:
+            return False
+        elif value.lower().strip() in {"1", "on", "t", "true", "y", "yes"}:
+            return True
         raise TypeCoercionError()
 
 
-class BytesNode(TypeNode):
+class BytesNode(TypeNode[bytes]):
     def __init__(self) -> None:
-        super().__init__("bytes")
+        super().__init__(bytes)
 
-    def _cast_python(self, value: Any, is_strict: bool) -> bytes:
-        if isinstance(value, bytes):
-            return value
-        if is_strict:
-            raise TypeCoercionError()
+    def from_dumpable(self, value: Any) -> bytes:
+        if isinstance(value, str):
+            return value.encode("utf-8")
+        raise TypeCoercionError()
 
-        return bytes(value)
-
-    def cast_dumpable(self, value: Any) -> str:
-        return str(self.cast_python_strict(value))
+    def to_dumpable(self, value: bytes) -> str:
+        return self.from_python_object(value).decode("utf-8")
 
 
-class PathNode(TypeNode):
+class PathNode(TypeNode[Path]):
     def __init__(self) -> None:
-        super().__init__("Path")
+        super().__init__(Path)
 
-    def _cast_python(self, value: Any, is_strict: bool) -> Path:
-        if isinstance(value, Path):
-            return value
-        if is_strict:
-            raise TypeCoercionError()
-
+    def from_dumpable(self, value: Any) -> Path:
         return Path(value)
 
-    def cast_dumpable(self, value: Any) -> str:
-        return str(self.cast_python_strict(value))
+    def to_dumpable(self, value: Path) -> str:
+        return str(value)
 
 
-class NoneTypeNode(TypeNode):
+class NoneTypeNode(TypeNode[None]):
     def __init__(self) -> None:
-        super().__init__("NoneType")
+        super().__init__(type(None))
 
-    def _cast_python(self, value: Any, is_strict: bool) -> None:
-        if value is None:
+    def from_str(self, value: str) -> None:
+        if value.lower().strip() in {"none", "null"}:
             return None
         raise TypeCoercionError("Value is not None")
 
 
-class BaseParamsNode(TypeNode):
+class BaseParamsNode(TypeNode[AbstractBaseParams]):
     def __init__(self, base_params_type: AbstractBaseParams) -> None:
-        super().__init__("BaseParams")
+        super().__init__(AbstractBaseParams)
         self.base_params_type = base_params_type
 
-    def _cast_python(self, value: Any, is_strict: bool):
+    def from_python_object(self, value: Any) -> AbstractBaseParams:
         if isinstance(value, self.base_params_type):
             return value
-        if is_strict:
-            raise TypeCoercionError()
+        raise TypeCoercionError()
 
+    def from_dumpable(self, value: dict[str, Any]) -> AbstractBaseParams:
         if isinstance(value, dict):
             instance: AbstractBaseParams = self.base_params_type()
-            instance.override_from_dict(value)
-            return value
+            instance._override_from_dict(value, conversion_from_type=ConversionFromType.DUMPABLE)
+            return instance
 
         raise TypeCoercionError(f"Cannot convert {value} to {self.base_params_type} (derived BaseParams)")
 
     def __repr__(self) -> str:
         return f"{self.base_params_type.__name__}(BaseParams)"
 
-    def cast_dumpable(self, value: Any) -> dict:
+    def to_dumpable(self, value: AbstractBaseParams) -> dict:
         raise Exception("Can't cast dumpable")
 
 
-class LiteralNode(TypeNode):
+class LiteralNode(TypeNode[Any]):
     def __init__(self, literal_args: tuple) -> None:
-        super().__init__("Literal")
+        super().__init__(Literal)
         self.literal_args = literal_args
 
-    def _cast_python(self, value: Any, is_strict: bool):
+    def from_python_object(self, value: Any):
         if value not in self.literal_args:
             raise TypeCoercionError(f"Value {value} is not a valid Literal")
 
@@ -148,59 +176,20 @@ class LiteralNode(TypeNode):
     def __repr__(self) -> str:
         return f"Literal[{self.literal_args}]"
 
+    def to_dumpable(self, value: Any) -> Any:
+        return value
 
-class EnumNode(TypeNode):
+
+class EnumNode(TypeNode[Any]):
     def __init__(self, enum_type: EnumMeta) -> None:
-        super().__init__("Enum")
+        super().__init__(Enum)
         self.enum_type = enum_type
 
-    def _cast_python(self, value: Any, is_strict: bool):
+    def from_python_object(self, value: Any):
         return self.enum_type(value)
 
     def __repr__(self) -> str:
         return f"{self.enum_type.__name__}(Enum)"
-
-
-# ========= number node
-T = TypeVar("T")
-
-
-class NumberNode(TypeNode):
-    def __init__(self, type_base_name: str, conversion_function: T) -> None:
-        super().__init__(type_base_name)
-        self.conversion_function = conversion_function
-
-    def _cast_python(self, value: Any, is_strict: bool) -> T:
-        if isinstance(value, self.conversion_function):
-            return value
-        if is_strict:
-            raise TypeCoercionError()
-
-        # check for precision loss
-        number_coercion_res = self.conversion_function(value)
-        complex_coercion_res = complex(value)
-        if complex_coercion_res != number_coercion_res:
-            raise TypeCoercionError()
-
-        return number_coercion_res
-
-
-class IntNode(NumberNode):
-    def __init__(self) -> None:
-        super().__init__("int", int)
-
-
-class FloatNode(NumberNode):
-    def __init__(self) -> None:
-        super().__init__("float", float)
-
-
-class ComplexNode(NumberNode):
-    def __init__(self) -> None:
-        super().__init__("complex", complex)
-
-    def cast_dumpable(self, value: Any) -> str:
-        return str(self.cast_python_strict(value))
 
 
 # =========== CompoundTypeNode
@@ -211,18 +200,15 @@ class CompoundTypeNode(TypeNode):
 
     def __repr__(self) -> str:
         inner_repr = ", ".join(repr(inner) for inner in self.inner_args)
-        return f"{self.type_base_name}[{inner_repr}]"
+        return f"{self.type}[{inner_repr}]"
 
 
 class TupleNode(CompoundTypeNode):
     def __init__(self, inner_args: list[TypeNode], is_ends_with_ellipsis: bool = False) -> None:
-        super().__init__("Tuple", inner_args)
+        super().__init__(Tuple, inner_args)
         self.is_any_length = is_ends_with_ellipsis | len(inner_args) == 1
 
-    def _cast_prolog(self, value: Any, is_strict: bool) -> list[tuple[TypeNode, Any]]:
-        if is_strict and not isinstance(value, tuple):
-            raise TypeCoercionError()
-
+    def _cast_prolog(self, value: Any) -> list[tuple[TypeNode, Any]]:
         res = []
         for i, v in enumerate(value):
             if self.is_any_length:
@@ -230,20 +216,41 @@ class TupleNode(CompoundTypeNode):
             res.append((self.inner_args[i], v))
         return res
 
-    def _cast_python(self, value: Any, is_strict: bool) -> tuple:
-        if is_strict and not isinstance(value, tuple):
+    def from_python_object(self, value: Any) -> tuple:
+        if not isinstance(value, tuple):
             raise TypeCoercionError()
 
         converted_values = []
-        for node, v in self._cast_prolog(value, is_strict):
-            res = node._cast_python(v, is_strict)
+        for node, v in self._cast_prolog(value):
+            res = node.from_python_object(v)
 
             converted_values.append(res)
 
         return tuple(converted_values)
 
-    def cast_dumpable(self, value: Any) -> list:
-        return list(node.cast_dumpable(v) for node, v in self._cast_prolog(value, is_strict=True))
+    def from_dumpable(self, value: Any) -> Any:
+        converted_values = []
+        for node, v in self._cast_prolog(value):
+            res = node.from_dumpable(v)
+
+            converted_values.append(res)
+
+        return tuple(converted_values)
+
+    def from_str(self, value: str) -> Any:
+        if not isinstance(value, str):
+            raise TypeCoercionError()
+
+        converted_values = []
+        for node, v in self._cast_prolog(value):
+            res = node.from_str(v)
+
+            converted_values.append(res)
+
+        return tuple(converted_values)
+
+    def to_dumpable(self, value: tuple) -> list:
+        return list(node.to_dumpable(v) for node, v in self._cast_prolog(value))
 
 
 _precedence_list = [
@@ -256,30 +263,49 @@ _precedence_list = [
     NoneTypeNode,
     TupleNode,
     BytesNode,
-    StrNode,
     PathNode,
+    StrNode,
 ]
 _precedence = {type_node: i for i, type_node in enumerate(_precedence_list)}
 
 
 class UnionNode(CompoundTypeNode):
     def __init__(self, inner_args: list[TypeNode]) -> None:
-        super().__init__("Union", inner_args)
+        super().__init__(Union, inner_args)
 
         self.sorted_inner_args: list[TypeNode] = sorted(self.inner_args, key=lambda x: _precedence[type(x)])
 
-    def _cast_python(self, value: Any, is_strict: bool):
+    def from_python_object(self, value: Any):
         for inner_type in self.sorted_inner_args:
             try:
-                return inner_type._cast_python(value, is_strict)
+                return inner_type.from_python_object(value)
             except Exception:
                 continue
         raise TypeCoercionError()
 
-    def cast_dumpable(self, value: Any):
+    def from_dumpable(self, value: Any):
         for inner_type in self.sorted_inner_args:
             try:
-                return inner_type.cast_dumpable(value)
+                return inner_type.from_dumpable(value)
+            except Exception:
+                continue
+        raise TypeCoercionError()
+
+    def from_str(self, value: Any):
+        if not isinstance(value, str):
+            raise TypeCoercionError()
+
+        for inner_type in self.sorted_inner_args:
+            try:
+                return inner_type.from_str(value)
+            except Exception:
+                continue
+        raise TypeCoercionError()
+
+    def to_dumpable(self, value: Any):
+        for inner_type in self.sorted_inner_args:
+            try:
+                return inner_type.to_dumpable(value)
             except Exception:
                 continue
         raise TypeCoercionError()

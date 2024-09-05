@@ -5,14 +5,16 @@ from typing import Any, get_type_hints
 
 import yaml
 
-from parametric._abstract_base_params import AbstractBaseParams
+from parametric._helpers import AbstractBaseParams, ConversionFromType
 from parametric._type_node import (
     BoolNode,
     BytesNode,
+    ComplexNode,
     EnumNode,
+    FloatNode,
+    IntNode,
     LiteralNode,
     NoneTypeNode,
-    NumberNode,
     PathNode,
     StrNode,
 )
@@ -43,7 +45,9 @@ class BaseParams(AbstractBaseParams):
             if value == EMPTY_PARAM:
                 continue
 
-            self._default_values |= self._convert_and_set(name, value, is_strict=True)
+            self._default_values |= self._convert_and_set(
+                name, value, conversion_from_type=ConversionFromType.PYTHON_OBJECT
+            )
 
         # flag for finishing init for __setattr__
         self._is_init_finished = True
@@ -70,11 +74,15 @@ class BaseParams(AbstractBaseParams):
                 overrides_dict[name] = res_dict[name]
         return copy.deepcopy(overrides_dict)
 
-    def _convert_and_set(self, name, value, is_strict: bool) -> dict[str, Any]:
-        if is_strict:
-            converted_val = self._name_to_type_node[name].cast_python_strict(value)
+    def _convert_and_set(self, name, value, conversion_from_type: ConversionFromType) -> dict[str, Any]:
+        if conversion_from_type == ConversionFromType.PYTHON_OBJECT:
+            converted_val = self._name_to_type_node[name].from_python_object(value)
+        elif conversion_from_type == ConversionFromType.DUMPABLE:
+            converted_val = self._name_to_type_node[name].from_dumpable(value)
+        elif conversion_from_type == ConversionFromType.STR:
+            converted_val = self._name_to_type_node[name].from_str(value)
         else:
-            converted_val = self._name_to_type_node[name].cast_python_relaxed(value)
+            raise Exception(f"unsupported conversion_from_type {conversion_from_type}")
 
         if isinstance(converted_val, BaseParams):
             self._inner_params_that_are_baseparam_class.add(name)
@@ -87,13 +95,16 @@ class BaseParams(AbstractBaseParams):
         given_value = getattr(self, field_name, EMPTY_PARAM)
         return given_value
 
-    def override_from_dict(self, changed_params: dict[str, Any], is_strict: bool = True) -> None:
+    def _override_from_dict(self, changed_params: dict[str, Any], conversion_from_type: ConversionFromType) -> None:
         override_dict = {}
         for name, value in changed_params.items():
             if name not in self._name_to_type_node:
                 raise RuntimeError(f"param name '{name}' does not exist")
 
-            override_dict |= self._convert_and_set(name, value, is_strict)
+            override_dict |= self._convert_and_set(name, value, conversion_from_type)
+
+    def override_from_dict(self, changed_params: dict[str, Any]) -> None:
+        self._override_from_dict(changed_params, conversion_from_type=ConversionFromType.PYTHON_OBJECT)
 
     def override_from_cli(self) -> None:
         import argparse
@@ -104,14 +115,26 @@ class BaseParams(AbstractBaseParams):
         # Add arguments
         for name, type_node in self._name_to_type_node.items():
             if isinstance(
-                type_node, (NumberNode, StrNode, BoolNode, BytesNode, PathNode, NoneTypeNode, LiteralNode, EnumNode)
+                type_node,
+                (
+                    IntNode,
+                    FloatNode,
+                    ComplexNode,
+                    StrNode,
+                    BoolNode,
+                    BytesNode,
+                    PathNode,
+                    NoneTypeNode,
+                    LiteralNode,
+                    EnumNode,
+                ),
             ):
                 parser.add_argument(f"--{name}", type=str, required=False)
 
         args = parser.parse_args()
         changed_params = {k: v for k, v in vars(args).items() if parser.get_default(k) != v}
 
-        self.override_from_dict(changed_params, is_strict=False)
+        self._override_from_dict(changed_params, conversion_from_type=ConversionFromType.STR)
 
     def override_from_yaml(self, filepath: Path | str) -> None:
         filepath = Path(filepath)
@@ -123,7 +146,7 @@ class BaseParams(AbstractBaseParams):
         if changed_params is None:
             return
 
-        self.override_from_dict(changed_params, is_strict=False)
+        self._override_from_dict(changed_params, conversion_from_type=ConversionFromType.DUMPABLE)
 
     def override_from_envs(self, env_prefix: str = "_param_") -> None:
         # Build a dictionary mapping lowercase names to actual case-sensitive names
@@ -147,7 +170,7 @@ class BaseParams(AbstractBaseParams):
                 actual_name = lower_to_actual_case[param_key]
                 changed_params[actual_name] = value
 
-        self.override_from_dict(changed_params, is_strict=False)
+        self._override_from_dict(changed_params, conversion_from_type=ConversionFromType.STR)
 
     def to_dict(self) -> dict[str, Any]:
         res_dict = {}
@@ -169,7 +192,7 @@ class BaseParams(AbstractBaseParams):
             if isinstance(val, BaseParams):
                 dumpable_dict_res[name] = val._to_dumpable_dict()
             else:
-                dumpable_dict_res[name] = type_node.cast_dumpable(val)
+                dumpable_dict_res[name] = type_node.to_dumpable(val)
         return dumpable_dict_res
 
     def save_yaml(self, filepath: str) -> None:
@@ -200,3 +223,13 @@ class BaseParams(AbstractBaseParams):
         if self._is_frozen:
             raise AttributeError(f"Params are frozen. Cannot modify attribute {key}")
         super().__setattr__(key, value)
+
+    def __eq__(self, other: "BaseParams"):
+        if not isinstance(other, BaseParams):
+            return False
+        for field_name in self._name_to_type_node:
+            value1 = self._get_value_including_empty(field_name)
+            value2 = other._get_value_including_empty(field_name)
+            if value1 != value2:
+                return False
+        return True
