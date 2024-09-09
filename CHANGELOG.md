@@ -1,11 +1,6 @@
 ## [0.4.2] - 2024-09-09
 
 - manual release bugfix
-- manual release bugfix
-- another release bugfix
-- another attempt to fix tests in release
-- manual release tests fix
-- update tests in yaml release
 - add conversion from python object, dumpable or str, and fix more bugs along the way (#71)
 - upgrade tests and fix a bunch of bugs (#67)
 
