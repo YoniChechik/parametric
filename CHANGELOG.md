@@ -1,3 +1,9 @@
+## [0.4.2] - 2024-09-09
+
+- manual release bugfix
+- add conversion from python object, dumpable or str, and fix more bugs along the way (#71)
+- upgrade tests and fix a bunch of bugs (#67)
+
 ## [0.4.1] - 2024-08-31
 
 - fix changelog built only on releases and other action fixes
