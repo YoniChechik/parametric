@@ -60,7 +60,7 @@ jobs:
           # move the src dir so tests will run on package
           mv /home/runner/work/parametric/parametric/parametric/ /home/runner/work/parametric/parametric/parametric_backup/
           # ignore existing configuration file and run only the tests dir with the installed package and not the src dir from the repo
-          PYTHONPATH=home/runner/work/parametric/parametric pytest -c /dev/null --rootdir /home/runner/work/parametric/parametric
+          PYTHONPATH=/home/runner/work/parametric/parametric pytest -c /dev/null --rootdir /home/runner/work/parametric/parametric
           mv /home/runner/work/parametric/parametric/parametric_backup/ /home/runner/work/parametric/parametric/parametric/
 
       - name: Create a Pull Request
