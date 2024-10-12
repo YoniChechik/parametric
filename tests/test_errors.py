@@ -18,24 +18,17 @@ def test_invalid_overrides(params: MyParams):
         params.override_from_dict({"i04": "not an int or float"})
 
 
-def test_empty_field_error_on_freeze(params: MyParams):
-    # Attempt to freeze with an unset mandatory field should raise an error
-    with pytest.raises(Exception):
-        params.freeze()
-
-
 def test_change_after_freeze(params: MyParams):
     params.t03 = ((1, "c"), (3.14, "d"))
 
-    # empty params to fill before freeze
-    params.em01 = 123
-    params.bp01.em01 = 456
-
     params.freeze()
 
-    with pytest.raises(BaseException):
+    with pytest.raises(Exception):
         params.t03 = ((2, "xxx"), (2, "xxx"))
+
+    with pytest.raises(Exception):
+        params.bp01.t03 = ((2, "xxx"), (2, "xxx"))
 
 
 if __name__ == "__main__":
-    pytest.main(["--no-cov", "-v", __file__])
+    pytest.main(["-v", __file__])

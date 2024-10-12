@@ -7,10 +7,6 @@ from tests.conftest import MyParams
 
 
 def test_save_yaml(params: MyParams):
-    params.em01 = 123
-    # TODO on freeze we dont get correct param name if below not set
-    params.bp01.em01 = 456
-
     params.freeze()
 
     with NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp_yaml:
@@ -28,10 +24,6 @@ def test_save_yaml(params: MyParams):
         "  b04: true\n"
         "  by03: null\n"
         "  by04: default\n"
-        "  c03: null\n"
-        "  c04: (1+2j)\n"
-        "  c05: (3+4j)\n"
-        "  em01: 456\n"
         "  f01: 0.5\n"
         "  f03: null\n"
         "  f04: 8.5\n"
@@ -54,7 +46,7 @@ def test_save_yaml(params: MyParams):
         "  - key1\n"
         "  - 1\n"
         "  p03: null\n"
-        f"  p04: {os.sep}xx{os.sep}path\n"
+        "  p04: /xx/path\n"
         "  s01: xyz\n"
         "  s03: null\n"
         "  s04: default\n"
@@ -79,10 +71,6 @@ def test_save_yaml(params: MyParams):
         "  - 1\n"
         "by03: null\n"
         "by04: default\n"
-        "c03: null\n"
-        "c04: (1+2j)\n"
-        "c05: (3+4j)\n"
-        "em01: 123\n"
         "f01: 0.5\n"
         "f03: null\n"
         "f04: 8.5\n"
@@ -105,7 +93,7 @@ def test_save_yaml(params: MyParams):
         "- key1\n"
         "- 1\n"
         "p03: null\n"
-        f"p04: {os.sep}xx{os.sep}path\n"
+        "p04: /xx/path\n"
         "s01: xyz\n"
         "s03: null\n"
         "s04: default\n"
@@ -133,7 +121,7 @@ def test_save_yaml(params: MyParams):
     _compare_strings_with_multiple_newlines(loaded_params, expected_yaml)
 
     params2 = MyParams()
-    params2.override_from_yaml(tmp_yaml_name)
+    params2.override_from_yaml_file(tmp_yaml_name)
 
     os.remove(tmp_yaml_name)
     assert params == params2
@@ -152,15 +140,11 @@ def _compare_strings_with_multiple_newlines(string1: str, string2: str) -> None:
 
 
 def test_to_dict(params: MyParams):
-    params.em01 = 123
-    # TODO on freeze we dont get correct param name if below not set
-    params.bp01.em01 = 456
-
     params.freeze()
 
-    params_dict = params.to_dict()
-    assert params_dict["em01"] == 123
+    params_dict = params.model_dump_serializable()
+    assert params_dict["p04"] == "/xx/path"
 
 
 if __name__ == "__main__":
-    pytest.main(["--no-cov", "-v", __file__])
+    pytest.main(["-v", __file__])

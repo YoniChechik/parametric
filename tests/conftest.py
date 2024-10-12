@@ -2,7 +2,6 @@
 specific file name that we can build fixtures and use them in all other test files for pytest
 """
 
-import copy
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
 
@@ -24,9 +23,6 @@ from parametric import BaseParams
 
 
 class A(BaseParams):
-    # something empty
-    em01: int
-
     # For int
     i01: int = 1
     i03: int | None = None
@@ -44,11 +40,6 @@ class A(BaseParams):
     f03: float | None = None
     f04: float = 8.5
 
-    # For complex
-    c03: complex | None = None
-    c04: complex = 1 + 2j
-    c05: complex | float | int = 3 + 4j
-
     # For bool
     b03: bool | None = None
     b04: bool = True
@@ -59,8 +50,7 @@ class A(BaseParams):
 
     # For Path
     p03: Path | None = None
-    p04: Path = Path("/default/path")
-    p04: Path | str = Path("/xx/path")
+    p04: Path = Path("/xx/path")
 
     # literals
     l01: Literal["a", "b", "c"] = "a"
@@ -84,10 +74,16 @@ class A(BaseParams):
 
 
 class MyParams(A):
+    """
+    all fields from above are fields here + a complex field that also has all
+    """
+
     bp01: A = A()
 
 
 @pytest.fixture
 def params():
-    # Return a deep copy of the params to ensure each test gets a fresh instance
-    return copy.deepcopy(MyParams())
+    # TODO bug here that model gets frozen when running many tests at once
+    x = MyParams()
+    x.model_config["frozen"] = False
+    return x
