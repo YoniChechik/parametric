@@ -35,11 +35,18 @@ class BaseParams(BaseModel):
         validate_default = True
 
     def override_from_dict(self, data: dict[str, Any]):
-        # based on: https://github.com/pydantic/pydantic/discussions/3139#discussioncomment-4797649
-        update = self.model_dump()
-        update.update(data)
-        for k, v in self.model_validate(update).model_dump(exclude_defaults=True).items():
+        for k, v in data.items():
+            # NOTE: this also validates
             setattr(self, k, v)
+
+    def model_dump_non_defaults(self):
+        changed = {}
+        for field_name, field_info in self.model_fields.items():
+            default_value = field_info.default
+            current_value = getattr(self, field_name)
+            if current_value != default_value:
+                changed[field_name] = current_value
+        return changed
 
     def override_from_yaml_file(self, yaml_path: Path | str):
         with open(yaml_path, "r") as file:
