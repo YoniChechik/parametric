@@ -1,3 +1,7 @@
+## [0.7.0] - 2024-10-14
+
+- model_dump_non_defaults (#77)
+
 ## [0.6.0] - 2024-10-14
 
 - Enums support (#75)
