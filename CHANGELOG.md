@@ -1,3 +1,7 @@
+## [0.5.0] - 2024-10-12
+
+- works with pydantic as base (#73)
+
 ## [0.4.2] - 2024-09-09
 
 - manual release bugfix
