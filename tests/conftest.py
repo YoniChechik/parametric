@@ -2,6 +2,7 @@
 specific file name that we can build fixtures and use them in all other test files for pytest
 """
 
+from enum import Enum
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
 
@@ -9,17 +10,18 @@ import pytest
 
 from parametric import BaseParams
 
-# # Define Enums
-# class Color(Enum):
-#     RED = "red"
-#     GREEN = "green"
-#     BLUE = "blue"
+
+# Define Enums
+class Color(Enum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
 
 
-# class StatusCode(Enum):
-#     SUCCESS = 200
-#     CLIENT_ERROR = 400
-#     SERVER_ERROR = 500
+class StatusCode(Enum):
+    SUCCESS = 200
+    CLIENT_ERROR = 400
+    SERVER_ERROR = 500
 
 
 class A(BaseParams):
@@ -69,8 +71,8 @@ class A(BaseParams):
     o04: Tuple[Union[int, str], ...] = ("key1", 1)
 
     # enums
-    # e01: Color = Color.RED
-    # e02: StatusCode = StatusCode.SUCCESS
+    e01: Color = Color.RED
+    e02: StatusCode = StatusCode.SUCCESS
 
 
 class MyParams(A):
