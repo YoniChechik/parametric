@@ -67,7 +67,3 @@ def test_combined_overrides(monkeypatch: pytest.MonkeyPatch, params: MyParams):
     assert params.s01 == "aaa"
     assert params.f03 == 12.5
     assert params.f04 == 0.001
-
-
-if __name__ == "__main__":
-    pytest.main(["-v", __file__])

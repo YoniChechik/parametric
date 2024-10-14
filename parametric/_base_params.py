@@ -1,3 +1,4 @@
+import enum
 import json
 import os
 from pathlib import Path
@@ -113,6 +114,16 @@ class BaseParams(BaseModel):
         if not isinstance(other, BaseParams):
             return False
         for field_name in self.model_fields:
-            if getattr(self, field_name) != getattr(other, field_name):
-                return False
+            self_val = getattr(self, field_name)
+            other_val = getattr(other, field_name)
+            if self_val == other_val:
+                continue
+            # for enums
+            elif (
+                isinstance(self_val, enum.Enum)
+                and isinstance(other_val, enum.Enum)
+                and self_val.value == other_val.value
+            ):
+                continue
+            return False
         return True
