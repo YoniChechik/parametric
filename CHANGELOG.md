@@ -1,3 +1,7 @@
+## [0.6.0] - 2024-10-14
+
+- Enums support (#75)
+
 ## [0.5.0] - 2024-10-12
 
 - works with pydantic as base (#73)
