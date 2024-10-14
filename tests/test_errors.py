@@ -52,8 +52,9 @@ def test_error_change_after_freeze(params: MyParams):
         params.bp01.t03 = ((2, "xxx"), (2, "xxx"))
     assert "Instance is frozen" in str(exc_info.value)
 
-    with pytest.raises(Exception):
+    with pytest.raises(Exception) as exc_info:
         params.bp01.t03 = ((2, "xxx"), (2, "xxx"))
+    assert "Instance is frozen" in str(exc_info.value)
 
 
 def test_error_mutable_field():
