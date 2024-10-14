@@ -4,6 +4,7 @@ from tempfile import NamedTemporaryFile
 
 import pytest
 
+from parametric._base_params import BaseParams
 from tests.conftest import MyParams
 
 
@@ -67,3 +68,18 @@ def test_combined_overrides(monkeypatch: pytest.MonkeyPatch, params: MyParams):
     assert params.s01 == "aaa"
     assert params.f03 == 12.5
     assert params.f04 == 0.001
+
+    assert params.model_dump_non_defaults() == {"i01": 11, "s01": "aaa", "f03": 12.5, "f04": 0.001}
+
+
+def test_dict_overrides():
+    class Test(BaseParams):
+        i1: int = 1
+
+    params = Test()
+    with pytest.raises(Exception) as exc_info:
+        params.override_from_dict({"i1": "test"})
+    assert (
+        "Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='test', input_type=str]"
+        in str(exc_info.value)
+    )
