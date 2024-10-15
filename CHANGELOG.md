@@ -1,3 +1,9 @@
+## [0.7.1] - 2024-10-15
+
+- bugfix reading yaml file: None returns if file is empty
+- spelling
+- update readme (#79)
+
 ## [0.7.0] - 2024-10-14
 
 - model_dump_non_defaults (#77)
