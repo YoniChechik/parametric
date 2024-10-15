@@ -63,6 +63,7 @@ params = MyParams()
 params.override_from_cli()
 params.freeze()
 
+# NOTE: params.model_dump() is a function of pydantic.BaseModel we inherit from
 print(params.model_dump())  # {'num_epochs': 500} 
 ```
 
@@ -144,7 +145,7 @@ Let's see:
 **`params.py`** (module to define the parameters and expose `params`):
 
 ```python
-from pathlib import Path  # NOTE: every time a developer switches from str/os.path to pathlib.Path, am angel gets his wings!
+from pathlib import Path  # NOTE: every time a developer switches from str/os.path to pathlib.Path, an angel gets his wings!
 
 from parametric import BaseParams
 
