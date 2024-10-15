@@ -1,3 +1,7 @@
+## [0.7.2] - 2024-10-15
+
+- bugfix coerced non defaults
+
 ## [0.7.1] - 2024-10-15
 
 - bugfix reading yaml file: None returns if file is empty
