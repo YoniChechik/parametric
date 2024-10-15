@@ -41,10 +41,15 @@ class BaseParams(BaseModel):
 
     def model_dump_non_defaults(self):
         changed = {}
+        default_params = self.model_copy()
         for field_name, field_info in self.model_fields.items():
-            default_value = field_info.default
+            # fixing the problem where default from field info isn't coerced:
+            # for example: a user can define Path() as parameter type but insert a default str.
+            # here we coerce the default to be Path() so it's the same as the actual value
+            setattr(default_params, field_name, field_info.get_default())
+            # getattr of-course returns us the coerce result...
             current_value = getattr(self, field_name)
-            if current_value != default_value:
+            if current_value != getattr(default_params, field_name):
                 changed[field_name] = current_value
         return changed
 
@@ -112,7 +117,7 @@ class BaseParams(BaseModel):
 
     # ==== serializing
     @field_serializer("*", when_used="json")
-    def serialize_path_to_str(self, value):
+    def _serialize_path_to_str(self, value):
         if isinstance(value, Path):
             return str(value.as_posix())
         return value
