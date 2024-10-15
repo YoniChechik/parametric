@@ -51,6 +51,9 @@ class BaseParams(BaseModel):
     def override_from_yaml_file(self, yaml_path: Path | str):
         with open(yaml_path, "r") as file:
             yaml_data = yaml.safe_load(file)
+        # None returns if file is empty
+        if yaml_data is None:
+            return
         self.override_from_dict(yaml_data)
 
     def override_from_cli(self) -> None:
