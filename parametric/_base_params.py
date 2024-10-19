@@ -1,21 +1,20 @@
+import enum
+import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import BaseModel, field_serializer
 
-from parametric._abstract_base_params import AbstractBaseParams
-from parametric._gui.base import run_gui
-
-EMPTY_PARAM = "__parametric_empty_field"
+from parametric._typehints import _validate_immutable_typehint
 
 
-class BaseParams(AbstractBaseParams):
-    def __new__(cls, *args, **kwargs):
-        if cls is BaseParams:
-            raise TypeError(f"{cls.__name__} cannot be instantiated directly, only derive from")
-        return super().__new__(cls)
+class BaseParams(BaseModel):
+    def __init__(self, *args, **kwargs):
+        # currently i don't know a way to set private vars because it will be a part of the model
+        super().__init__(*args, **kwargs)
+        self._validate_immutable_typehints()
 
     def _validate_immutable_typehints(self):
         for field_name, field_info in self.model_fields.items():
@@ -40,51 +39,25 @@ class BaseParams(AbstractBaseParams):
             # NOTE: this also validates
             setattr(self, k, v)
 
-            self._convert_and_set(name, value, is_strict=True)
+    def model_dump_non_defaults(self):
+        changed = {}
+        default_params = self.model_copy()
+        for field_name, field_info in self.model_fields.items():
+            # fixing the problem where default from field info isn't coerced:
+            # for example: a user can define Path() as parameter type but insert a default str.
+            # here we coerce the default to be Path() so it's the same as the actual value
+            setattr(default_params, field_name, field_info.get_default())
+            # getattr of-course returns us the coerce result...
+            current_value = getattr(self, field_name)
+            if current_value != getattr(default_params, field_name):
+                changed[field_name] = current_value
+        return changed
 
-    def _convert_and_set(self, name, value, is_strict: bool):
-        if is_strict:
-            conversion_return = self._name_to_type_node[name].cast_python_strict(value)
-        else:
-            conversion_return = self._name_to_type_node[name].cast_python_relaxed(value)
-
-        if isinstance(conversion_return, BaseParams):
-            self._inner_params_that_are_baseparam_class.add(name)
-        else:
-            self._inner_params_that_are_baseparam_class.discard(name)
-        setattr(self, name, conversion_return)
-
-    def _get_value_including_empty(self, field_name):
-        given_value = getattr(self, field_name, EMPTY_PARAM)
-        return given_value
-
-    def override_from_dict(self, changed_params: dict[str, Any], is_strict: bool = True) -> None:
-        for name, value in changed_params.items():
-            if name not in self._name_to_type_node:
-                raise RuntimeError(f"param name '{name}' does not exist")
-
-            self._convert_and_set(name, value, is_strict)
-
-    def override_from_cli(self):
-        argv = sys.argv[1:]  # Skip the script name
-        if len(argv) % 2 != 0:
-            raise RuntimeError(
-                "Got odd amount of space separated strings as CLI inputs. Must be even as '--key value' pairs",
-            )
-        changed_params = {}
-        for i in range(0, len(argv), 2):
-            key = argv[i]
-            if not key.startswith("--"):
-                raise RuntimeError(f"Invalid argument key: {key}. Argument keys must start with '--'.")
-            key = key.lstrip("-")
-            value = argv[i + 1]
-            changed_params[key] = value
-
-        self.override_from_dict(changed_params, is_strict=False)
-
-    def override_from_yaml(self, filepath: Path | str) -> None:
-        filepath = Path(filepath)
-        if not filepath.is_file():
+    def override_from_yaml_file(self, yaml_path: Path | str):
+        with open(yaml_path, "r") as file:
+            yaml_data = yaml.safe_load(file)
+        # None returns if file is empty
+        if yaml_data is None:
             return
         self.override_from_dict(yaml_data)
 
@@ -105,7 +78,7 @@ class BaseParams(AbstractBaseParams):
         args = parser.parse_args()
         changed_params = {k: v for k, v in vars(args).items() if parser.get_default(k) != v}
 
-        self.override_from_dict(changed_params, is_strict=False)
+        self.override_from_dict(changed_params)
 
     def override_from_envs(self, env_prefix: str = "_param_") -> None:
         # Build a dictionary mapping lowercase names to actual case-sensitive names
@@ -129,49 +102,43 @@ class BaseParams(AbstractBaseParams):
                 actual_name = lower_to_actual_case[param_key]
                 changed_params[actual_name] = value
 
-        self.override_from_dict(changed_params, is_strict=False)
+        self.override_from_dict(changed_params)
 
     def save_yaml(self, save_path: str | Path):
         with open(save_path, "w") as file:
             yaml.dump(self.model_dump_serializable(), file)
 
-    def _to_dumpable_dict(self) -> dict[str, Any]:
-        dumpable_dict_res = {}
-        for name, type_node in self._name_to_type_node.items():
-            val = getattr(self, name)
-            if isinstance(val, BaseParams):
-                dumpable_dict_res[name] = val._to_dumpable_dict()
-            else:
-                dumpable_dict_res[name] = type_node.cast_dumpable(val)
-        return dumpable_dict_res
+    def freeze(self):
+        self.model_config["frozen"] = True
+        for field_name, field_info in self.model_fields.items():
+            if isinstance(field_info.annotation, type) and issubclass(field_info.annotation, BaseParams):
+                inner_base_params: BaseParams = getattr(self, field_name)
+                inner_base_params.model_config["frozen"] = True
 
-    def save_yaml(self, filepath: str) -> None:
-        if not self._is_frozen:
-            raise RuntimeError("'save_yaml' only works on frozen params. please run freeze() first")
+    # ==== serializing
+    @field_serializer("*", when_used="json")
+    def _serialize_path_to_str(self, value):
+        if isinstance(value, Path):
+            return str(value.as_posix())
+        return value
 
-        with open(filepath, "w") as stream:
-            yaml.dump(self._to_dumpable_dict(), stream)
+    def model_dump_serializable(self):
+        return json.loads(self.model_dump_json())
 
-    def freeze(self) -> None:
-        for name in self._name_to_type_node:
-            # check empty field
-            if self._get_value_including_empty(name) == EMPTY_PARAM:
-                raise ValueError(f"{name} is empty and must be set before freeze()")
-            if name in self._inner_params_that_are_baseparam_class:
-                base_params_instance: BaseParams = getattr(self, name)
-                base_params_instance.freeze()
-
-        self._is_frozen = True
-
-    def __setattr__(self, key, value):
-        # NOTE: in the init phase _is_frozen is not yet declared, but setattr is called when we make new vars, so we default to False here
-        if getattr(self, "_is_frozen", False):
-            raise AttributeError(f"Params are frozen. Cannot modify attribute {key}")
-        super().__setattr__(key, value)
-
-    def override_gui(self) -> None:
-        """Launches a NiceGUI interface to override parameters interactively."""
-        name_to_value = {name: self._get_value_including_empty(name) for name in self._name_to_type_node}
-        override_dict = run_gui(self._name_to_type_node, name_to_value)
-
-        self.override_from_dict(override_dict)
+    def __eq__(self, other: "BaseParams"):
+        if not isinstance(other, BaseParams):
+            return False
+        for field_name in self.model_fields:
+            self_val = getattr(self, field_name)
+            other_val = getattr(other, field_name)
+            if self_val == other_val:
+                continue
+            # for enums
+            elif (
+                isinstance(self_val, enum.Enum)
+                and isinstance(other_val, enum.Enum)
+                and self_val.value == other_val.value
+            ):
+                continue
+            return False
+        return True
