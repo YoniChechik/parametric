@@ -1,18 +1,12 @@
+from typing import Tuple
+
 import pytest
 
 from parametric._base_params import BaseParams
+from tests.conftest import MyParams
 
 
-class MyParamsNew(BaseParams):
-    nested_tuple: tuple[tuple[int, str], tuple[float, str]] = ((1, "a"), (3.14, "b"))
-    optional_tuple: tuple[int, int, int] | None = (1, 2, 3)
-    union_field: int | float = 42
-    tuple_of_int_or_str: tuple[int | str, ...] = ("key1", 1)
-
-
-def test_invalid_overrides():
-    params = MyParamsNew()
-
+def test_invalid_overrides(params: MyParams):
     # Attempt to override with invalid type should raise an error
     with pytest.raises(Exception):
         params.override_from_dict({"nested_tuple": ((1, "a"), "not a tuple")})
@@ -52,9 +46,46 @@ def test_change_after_freeze():
 
     params.freeze()
 
-    with pytest.raises(BaseException):
-        params.nested_tuple = ((2, "xxx"), (2, "xxx"))
+    with pytest.raises(Exception) as exc_info:
+        params.t03 = ((2, "xxx"), (2, "xxx"))
+    assert "Instance is frozen" in str(exc_info.value)
+
+    with pytest.raises(Exception) as exc_info:
+        params.bp01.t03 = ((2, "xxx"), (2, "xxx"))
+    assert "Instance is frozen" in str(exc_info.value)
+
+    with pytest.raises(Exception) as exc_info:
+        params.bp01.t03 = ((2, "xxx"), (2, "xxx"))
+    assert "Instance is frozen" in str(exc_info.value)
 
 
-if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+def test_error_mutable_field():
+    class Test(BaseParams):
+        list_param: list[int] = [1, 2, 3]
+
+    with pytest.raises(Exception) as exc_info:
+        Test()
+    assert "typehint list[int] is not allowed because it is not immutable" in str(exc_info.value)
+
+
+def test_error_tuple_no_inner_args():
+    class Test(BaseParams):
+        t: tuple = (1, 2, 3)
+
+    with pytest.raises(Exception) as exc_info:
+        Test()
+    assert "In t, must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
+
+    class Test2(BaseParams):
+        t: Tuple = (1, 2, 3)
+
+    with pytest.raises(Exception) as exc_info:
+        Test2()
+    assert "In t, must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
+
+    class Test3(BaseParams):
+        t: tuple[tuple] = ((1, 2, 3),)
+
+    with pytest.raises(Exception) as exc_info:
+        Test3()
+    assert "In t, must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)

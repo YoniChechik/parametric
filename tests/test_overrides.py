@@ -1,12 +1,11 @@
 import os
 import sys
-from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Literal
 
 import pytest
 
-from parametric import BaseParams
+from parametric._base_params import BaseParams
+from tests.conftest import MyParams
 
 
 class MyValidationParams(BaseParams):
@@ -35,64 +34,72 @@ def test_cli_overrides(monkeypatch):
 
     monkeypatch.setattr(sys, "argv", test_args)
 
-    params = MyParams()
     params.override_from_cli()
 
-    assert params.num_classes_without_bg == 3
-    assert params.dataset_name == "c"
+    assert params.i01 == 11
+    assert params.s01 == "aaa"
 
 
-def test_env_overrides(monkeypatch):
+def test_env_overrides(monkeypatch: pytest.MonkeyPatch, params: MyParams):
     # Setup mock environment variables
-    monkeypatch.setenv("_param_dataset_name", "b")
+    monkeypatch.setenv("_param_f03", "12.5")
 
-    params = MyParams()
     params.override_from_envs()
 
-    assert params.dataset_name == "b"
+    assert params.f03 == 12.5
 
 
-def test_yaml_overrides():
+def test_yaml_overrides(params: MyParams):
     # Mock YAML file content
-    yaml_content = "init_lr: 0.001"
+    yaml_content = "f04: 0.001"
 
     with NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp_yaml:
         tmp_yaml_name = tmp_yaml.name
         tmp_yaml.write(yaml_content)
 
-    params = MyParams()
-    params.override_from_yaml(tmp_yaml_name)
+    params.override_from_yaml_file(tmp_yaml_name)
 
-    assert params.init_lr == 0.001
+    assert params.f04 == 0.001
 
     os.remove(tmp_yaml_name)
 
 
-def test_combined_overrides(monkeypatch):
+def test_combined_overrides(monkeypatch: pytest.MonkeyPatch, params: MyParams):
     # Setup mock command line arguments
-    test_args = "script_name.py --num_classes_without_bg 3".split()
+    test_args = "script_name.py --i01 11 --s01 aaa".split()
     monkeypatch.setattr(sys, "argv", test_args)
 
     # Setup mock environment variables
-    monkeypatch.setenv("_param_dataset_name", "b")
+    monkeypatch.setenv("_param_f03", "12.5")
 
     # Mock YAML file content
-    yaml_content = "init_lr: 0.001"
+    yaml_content = "f04: 0.001"
     with NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp_yaml:
         tmp_yaml_name = tmp_yaml.name
         tmp_yaml.write(yaml_content)
 
-    params = MyParams()
     params.override_from_cli()
-    params.override_from_yaml(tmp_yaml_name)
+    params.override_from_yaml_file(tmp_yaml_name)
     params.override_from_envs()
 
     os.remove(tmp_yaml_name)
 
-    assert params.num_classes_without_bg == 3
-    assert params.dataset_name == "b"
-    assert params.init_lr == 0.001
+    assert params.i01 == 11
+    assert params.s01 == "aaa"
+    assert params.f03 == 12.5
+    assert params.f04 == 0.001
+
+    assert params.model_dump_non_defaults() == {"i01": 11, "s01": "aaa", "f03": 12.5, "f04": 0.001}
 
 
-if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+def test_dict_overrides():
+    class Test(BaseParams):
+        i1: int = 1
+
+    params = Test()
+    with pytest.raises(Exception) as exc_info:
+        params.override_from_dict({"i1": "test"})
+    assert (
+        "Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='test', input_type=str]"
+        in str(exc_info.value)
+    )

@@ -1,4 +1,6 @@
+import subprocess
 import sys
+from datetime import datetime
 from enum import Enum
 
 import tomlkit
@@ -62,6 +64,36 @@ def update_pyproject(dependencies, release_type):
     return current_version, new_version
 
 
+def _get_commits_since_last_version(last_version):
+    result = subprocess.run(
+        ["git", "log", f"v{last_version}..HEAD", "--pretty=format:%s"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to get commit logs: {result.stderr}")
+    return result.stdout.splitlines()
+
+
+def update_changelog(last_version, new_version):
+    commits = _get_commits_since_last_version(last_version)
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    changelog_entry = f"## [{new_version}] - {date_str}\n\n"
+
+    for commit in commits:
+        changelog_entry += f"- {commit}\n"
+
+    changelog_entry += "\n"
+
+    # Prepend to CHANGELOG.md
+    with open("CHANGELOG.md", "r+") as changelog_file:
+        existing_content = changelog_file.read()
+        changelog_file.seek(0, 0)
+        changelog_file.write(changelog_entry + existing_content)
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in ReleaseType.list():
         raise ValueError(
@@ -72,5 +104,8 @@ if __name__ == "__main__":
     deps = parse_requirements("requirements.txt")
     last_version, new_version = update_pyproject(deps, release_type)
 
+    # Update CHANGELOG.md
+    update_changelog(last_version, new_version)
+
     # used as the output of this script to get the version
-    print(f"{new_version}")
+    print(new_version)

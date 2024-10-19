@@ -1,6 +1,4 @@
-import copy
 import os
-from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import pytest
@@ -41,12 +39,6 @@ def params():
 
 
 def test_save_yaml(params: MyParams):
-    params.num_epochs = 500
-    params.num_classes_without_bg = 3
-    params.train_batch_size = 8
-    params.val_batch_size = 32
-    params.data_dirs = ("x", "Y")
-
     params.freeze()
 
     with NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp_yaml:
@@ -56,34 +48,15 @@ def test_save_yaml(params: MyParams):
     with open(tmp_yaml_name) as f:
         loaded_params = f.read()
 
-    os.remove(tmp_yaml_name)
+    expected_yaml = "b03: null\nb04: true\nbp01:\n  b03: null\n  b04: true\n  by03: null\n  by04: default\n  e01: red\n  e02: 200\n  f01: 0.5\n  f03: null\n  f04: 8.5\n  i01: 1\n  i03: null\n  i04: 8\n  i05: 9\n  l01: a\n  o01:\n  - - 1\n    - a\n  - - 3.14\n    - b\n  o02:\n  - 1\n  - 2\n  - 3\n  o03: 42\n  o04:\n  - key1\n  - 1\n  p03: null\n  p04: /xx/path\n  s01: xyz\n  s03: null\n  s04: default\n  s05: '77'\n  t01:\n  - 640\n  - 480\n  t02:\n  - 1\n  - '2'\n  t03:\n  - - 1\n    - a\n  - - 3.14\n    - b\n  t04:\n  - 1\n  - 2\n  - 3\n  t05:\n  - key1\n  - 1\nby03: null\nby04: default\ne01: red\ne02: 200\nf01: 0.5\nf03: null\nf04: 8.5\ni01: 1\ni03: null\ni04: 8\ni05: 9\nl01: a\no01:\n- - 1\n  - a\n- - 3.14\n  - b\no02:\n- 1\n- 2\n- 3\no03: 42\no04:\n- key1\n- 1\np03: null\np04: /xx/path\ns01: xyz\ns03: null\ns04: default\ns05: '77'\nt01:\n- 640\n- 480\nt02:\n- 1\n- '2'\nt03:\n- - 1\n  - a\n- - 3.14\n  - b\nt04:\n- 1\n- 2\n- 3\nt05:\n- key1\n- 1\n"
 
-    expected_yaml = (
-        "continue_train_dir_path: null\n"
-        "continue_train_is_reset_to_init_lr: false\n"
-        "data_dirs:\n"
-        "- x\n"
-        "- Y\n"
-        "dataset_name: null\n"
-        "image_shape:\n"
-        "- 640\n"
-        "- 640\n"
-        "init_lr: 0.0001\n"
-        "lr_scheduler_factor: 0.5\n"
-        "lr_scheduler_patience_in_validation_steps: 20\n"
-        "nn_default_encoder_weights: imagenet\n"
-        "nn_encoder_name: efficientnet-b0\n"
-        "num_classes_without_bg: 3\n"
-        "num_epochs: 500\n"
-        f"res_dir: {os.sep}my_res_path\n"
-        "save_dir_path: null\n"
-        "train_batch_size: 8\n"
-        "val_batch_size: 32\n"
-        "validation:\n"
-        "  validation_batch_size: 8\n"
-        f"  validation_save_dir: {os.sep}my_dir\n"
-        "validation_step_per_epochs: 1\n"
-    )
+    _compare_strings_with_multiple_newlines(loaded_params, expected_yaml)
+
+    params2 = MyParams()
+    params2.override_from_yaml_file(tmp_yaml_name)
+
+    os.remove(tmp_yaml_name)
+    assert params == params2
 
     _compare_strings_with_multiple_newlines(loaded_params, expected_yaml)
 
@@ -101,21 +74,7 @@ def _compare_strings_with_multiple_newlines(string1: str, string2: str) -> None:
 
 
 def test_to_dict(params: MyParams):
-    params = MyParams()
-    params.num_epochs = 500
-    params.num_classes_without_bg = 3
-    params.train_batch_size = 8
-    params.val_batch_size = 32
-    params.data_dirs = ("x", "Y")
-
     params.freeze()
 
-    params_dict = params.to_dict()
-    assert params_dict["num_epochs"] == 500
-    assert params_dict["num_classes_without_bg"] == 3
-    assert params_dict["train_batch_size"] == 8
-    assert params_dict["val_batch_size"] == 32
-
-
-if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    params_dict = params.model_dump_serializable()
+    assert params_dict["p04"] == "/xx/path"

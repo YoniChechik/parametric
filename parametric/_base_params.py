@@ -1,13 +1,12 @@
 import os
 import sys
 from pathlib import Path
-from typing import Any, get_type_hints
+from typing import Any
 
 import yaml
 
 from parametric._abstract_base_params import AbstractBaseParams
 from parametric._gui.base import run_gui
-from parametric._typehint_parsing import parse_typehint
 
 EMPTY_PARAM = "__parametric_empty_field"
 
@@ -18,20 +17,28 @@ class BaseParams(AbstractBaseParams):
             raise TypeError(f"{cls.__name__} cannot be instantiated directly, only derive from")
         return super().__new__(cls)
 
-    def __init__(self):
-        self._is_frozen = False
-        self._inner_params_that_are_baseparam_class: set[str] = set()
+    def _validate_immutable_typehints(self):
+        for field_name, field_info in self.model_fields.items():
+            if isinstance(field_info.annotation, type) and issubclass(field_info.annotation, BaseParams):
+                inner_base_params: BaseParams = getattr(self, field_name)
+                inner_base_params._validate_immutable_typehints()
+            else:
+                _validate_immutable_typehint(field_name, field_info.annotation)
 
-        # ==== convert all on init
-        self._name_to_type_node = {
-            name: parse_typehint(name, typehint) for name, typehint in get_type_hints(self).items()
-        }
-        for name in self._name_to_type_node:
-            value = self._get_value_including_empty(name)
+    class Config:
+        # validate after each assignment
+        validate_assignment = True
+        # to freeze later
+        frozen = False
+        # don't allow new fields after init
+        extra = "forbid"
+        # validate default values
+        validate_default = True
 
-            # don't work on empty field
-            if value == EMPTY_PARAM:
-                continue
+    def override_from_dict(self, data: dict[str, Any]):
+        for k, v in data.items():
+            # NOTE: this also validates
+            setattr(self, k, v)
 
             self._convert_and_set(name, value, is_strict=True)
 
@@ -79,25 +86,38 @@ class BaseParams(AbstractBaseParams):
         filepath = Path(filepath)
         if not filepath.is_file():
             return
+        self.override_from_dict(yaml_data)
 
-        with open(filepath) as f:
-            changed_params = yaml.safe_load(f)
-        if changed_params is None:
-            return
+    def override_from_cli(self) -> None:
+        import argparse
+
+        # Initialize the parser
+        parser = argparse.ArgumentParser()
+
+        # Add arguments
+        for field_name, field_info in self.model_fields.items():
+            if isinstance(
+                field_info.annotation,
+                (type(int), type(float), type(bool), type(str), type(bytes), type(Path), type(None)),
+            ):
+                parser.add_argument(f"--{field_name}", type=field_info.annotation, required=False)
+
+        args = parser.parse_args()
+        changed_params = {k: v for k, v in vars(args).items() if parser.get_default(k) != v}
 
         self.override_from_dict(changed_params, is_strict=False)
 
     def override_from_envs(self, env_prefix: str = "_param_") -> None:
         # Build a dictionary mapping lowercase names to actual case-sensitive names
         lower_to_actual_case = {}
-        for name in self._name_to_type_node:
-            lower_name = name.lower()
+        for field_name in self.model_fields:
+            lower_name = field_name.lower()
             if lower_name in lower_to_actual_case:
                 conflicting_name = lower_to_actual_case[lower_name]
                 raise RuntimeError(
-                    f"Parameter names '{name}' and '{conflicting_name}' conflict when considered in lowercase.",
+                    f"Parameter names '{field_name}' and '{conflicting_name}' conflict when considered in lowercase.",
                 )
-            lower_to_actual_case[lower_name] = name
+            lower_to_actual_case[lower_name] = field_name
 
         changed_params = {}
         for key, value in os.environ.items():
@@ -111,16 +131,9 @@ class BaseParams(AbstractBaseParams):
 
         self.override_from_dict(changed_params, is_strict=False)
 
-    def to_dict(self) -> dict[str, Any]:
-        if not self._is_frozen:
-            raise RuntimeError("'to_dict' only works on frozen params. please run freeze() first")
-        res_dict = {}
-        for field_name in self._name_to_type_node:
-            value = getattr(self, field_name)
-            if isinstance(value, BaseParams):
-                value = value.to_dict()
-            res_dict[field_name] = value
-        return res_dict
+    def save_yaml(self, save_path: str | Path):
+        with open(save_path, "w") as file:
+            yaml.dump(self.model_dump_serializable(), file)
 
     def _to_dumpable_dict(self) -> dict[str, Any]:
         dumpable_dict_res = {}

@@ -1,4 +1,5 @@
 name: Manual Release PR
+# NOTE: automatic commits/ pr of github bots will NOT dispatch any other actions afterwards
 
 # NOTE: github bot can't push files to main if the branch is protected, so we split the release phase to:
 # 1. a manual step that changes files and does a PR of a new branch.
@@ -40,10 +41,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install tomlkit build twine
 
-      - name: Update pyproject.toml
-        id: update_pyproject
+      - name: Update files for release
+        id: update_files
         run: |
-          new_version=$(python .github/workflows/manual_release_pr_update_pyproject.py ${{ github.event.inputs.release_type }})
+          new_version=$(python .github/workflows/manual_release_pr_update_files.py ${{ github.event.inputs.release_type }})
           echo "new_version=${new_version}" >> $GITHUB_OUTPUT
 
       # ===== test the package
@@ -55,19 +56,17 @@ jobs:
           pip install pytest dist/*.whl
 
       - name: Run tests
-        # ignore existing configuration file and run only the tests dir with the installed package and not the src dir from the repo
-        run: pytest -c /dev/null --rootdir ./tests
-
-      - name: Add title to changelog
         run: |
-          echo "" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
-          echo "## [${{ steps.update_pyproject.outputs.new_version }}] - $(date +'%Y-%m-%d')" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
-          echo "" | cat - CHANGELOG.md > temp && mv temp CHANGELOG.md
+          # move the src dir so tests will run on package
+          mv /home/runner/work/parametric/parametric/parametric/ /home/runner/work/parametric/parametric/parametric_backup/
+          # ignore existing configuration file and run only the tests dir with the installed package and not the src dir from the repo
+          PYTHONPATH=/home/runner/work/parametric/parametric pytest -c /dev/null --rootdir /home/runner/work/parametric/parametric
+          mv /home/runner/work/parametric/parametric/parametric_backup/ /home/runner/work/parametric/parametric/parametric/
 
       - name: Create a Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
           branch: version-update-${{ github.event.inputs.release_type }}
-          title: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
-          body: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
-          commit-message: "Bump version to ${{ steps.update_pyproject.outputs.new_version }}"
+          title: "Bump version to ${{ steps.update_files.outputs.new_version }}"
+          body: "Bump version to ${{ steps.update_files.outputs.new_version }}"
+          commit-message: "Bump version to ${{ steps.update_files.outputs.new_version }}"
