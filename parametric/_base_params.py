@@ -7,6 +7,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, field_serializer
 
+from parametric._gui import run_gui
 from parametric._typehints import _validate_immutable_typehint
 
 
@@ -142,3 +143,9 @@ class BaseParams(BaseModel):
                 continue
             return False
         return True
+
+    def override_gui(self) -> None:
+        """Launches a NiceGUI interface to override parameters interactively."""
+        override_dict = run_gui(self)
+
+        self.override_from_dict(override_dict)
