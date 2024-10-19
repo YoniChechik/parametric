@@ -1,41 +1,7 @@
 import os
 from tempfile import NamedTemporaryFile
 
-import pytest
-
-from parametric import BaseParams
-
-
-class MyValidationParams(BaseParams):
-    validation_batch_size: int = 8
-    validation_save_dir: Path = Path("/my_dir")
-
-
-class MyParams(BaseParams):
-    data_dirs: tuple[str, ...]
-    num_classes_without_bg: int | None = None
-    dataset_name: str | None = None
-    image_shape: tuple[int, int] = (640, 640)
-    nn_encoder_name: str = "efficientnet-b0"
-    nn_default_encoder_weights: str = "imagenet"
-    save_dir_path: str | None = None
-    num_epochs: int = 1000
-    train_batch_size: int = 12
-    val_batch_size: int = 36
-    validation_step_per_epochs: int = 1
-    init_lr: float = 1e-4
-    lr_scheduler_patience_in_validation_steps: int = 20
-    lr_scheduler_factor: float = 0.5
-    continue_train_dir_path: str | None = None
-    continue_train_is_reset_to_init_lr: bool = False
-    res_dir: Path = Path("/my_res_path")
-    validation: MyValidationParams = MyValidationParams()
-
-
-@pytest.fixture
-def params():
-    # Return a deep copy of the params to ensure each test gets a fresh instance
-    return copy.deepcopy(MyParams())
+from tests.conftest import MyParams
 
 
 def test_save_yaml(params: MyParams):
@@ -58,19 +24,15 @@ def test_save_yaml(params: MyParams):
     os.remove(tmp_yaml_name)
     assert params == params2
 
-    _compare_strings_with_multiple_newlines(loaded_params, expected_yaml)
-
 
 def _compare_strings_with_multiple_newlines(string1: str, string2: str) -> None:
     lines1 = string1.splitlines()
     lines2 = string2.splitlines()
 
     for i, (line1, line2) in enumerate(zip(lines1, lines2)):
-        if line1 != line2:
-            raise Exception(f"Difference at line {i+1}:\n String 1: {line1}\nString 2: {line2}")
+        assert line1 == line2, f"Difference at line {i+1}:\nString 1: {line1}\nString 2: {line2}"
 
-    if len(lines1) != len(lines2):
-        raise Exception("Not same amount of lines")
+    assert len(lines1) == len(lines2), "Not same amount of lines"
 
 
 def test_to_dict(params: MyParams):

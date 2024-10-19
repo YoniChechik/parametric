@@ -8,29 +8,9 @@ from parametric._base_params import BaseParams
 from tests.conftest import MyParams
 
 
-class MyValidationParams(BaseParams):
-    validation_batch_size: int = 8
-    validation_save_dir: Path = Path("/my_dir")
-
-
-class MyParams(BaseParams):
-    num_classes_without_bg: int = 5
-    scheduler_name: str | None = None
-    image_shape: tuple[int, int] = (640, 480)
-    dataset_name: Literal["a", "b", "c"] = "a"
-    nn_encoder_name: str = "efficientnet-b0"
-    save_dir_path: Path | None = Path("/my/path")
-    complex_number: complex = 1000 + 1j
-    some_bytes: bytes = b"abc123"
-    init_lr: float = 1e-4
-    is_dropout: bool = False
-    data_dirs: tuple[Path, ...]
-    validation: MyValidationParams = MyValidationParams()
-
-
-def test_cli_overrides(monkeypatch):
-    # Setup mock command line arguments
-    test_args = "script_name.py --dataset_name c --num_classes_without_bg 3".split()
+def test_cli_overrides(monkeypatch: pytest.MonkeyPatch, params: MyParams):
+    # Test for b04 set to True with different values
+    test_args = "script_name.py --i01 11 --s01 aaa".split()
 
     monkeypatch.setattr(sys, "argv", test_args)
 

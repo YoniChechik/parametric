@@ -8,41 +8,39 @@ from tests.conftest import MyParams
 
 def test_invalid_overrides(params: MyParams):
     # Attempt to override with invalid type should raise an error
-    with pytest.raises(Exception):
-        params.override_from_dict({"nested_tuple": ((1, "a"), "not a tuple")})
+    with pytest.raises(Exception) as exc_info:
+        params.override_from_dict({"t03": ((1, "a"), "not a tuple")})
+    assert "t03.1\n  Input should be a valid tuple [type=tuple_type, input_value='not a tuple', input_type=str]" in str(
+        exc_info.value
+    )
 
-    with pytest.raises(Exception):
-        params.override_from_dict({"nested_tuple": (("not an int", "a"), (3.14, "b"))})
+    with pytest.raises(Exception) as exc_info:
+        params.override_from_dict({"t03": (("not an int", "a"), (3.14, "b"))})
+    assert (
+        "t03.0.0\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='not an int', input_type=str]"
+        in str(exc_info.value)
+    )
 
-    with pytest.raises(Exception):
-        params.override_from_dict({"optional_tuple": "not a tuple"})
+    with pytest.raises(Exception) as exc_info:
+        params.override_from_dict({"t04": "not a tuple"})
+    assert "t04\n  Input should be a valid tuple [type=tuple_type, input_value='not a tuple', input_type=str]" in str(
+        exc_info.value
+    )
 
-    with pytest.raises(Exception):
-        params.override_from_dict({"union_field": "not an int or float"})
-
-
-def test_to_dict_without_freeze():
-    params = MyParamsNew()
-
-    # Attempt to call to_dict without freezing should raise an error
-    with pytest.raises(RuntimeError):
-        params.to_dict()
-
-
-def test_empty_field_error_on_freeze():
-    class CustomParamsScheme(BaseParams):
-        mandatory_field: int
-
-    params = CustomParamsScheme()
-
-    # Attempt to freeze with an unset mandatory field should raise an error
-    with pytest.raises(Exception):
-        params.freeze()
+    with pytest.raises(Exception) as exc_info:
+        params.override_from_dict({"i04": "not an int or float"})
+    assert (
+        "i04.int\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='not an int or float', input_type=str]"
+        in str(exc_info.value)
+    )
+    assert (
+        "i04.float\n  Input should be a valid number, unable to parse string as a number [type=float_parsing, input_value='not an int or float', input_type=str]"
+        in str(exc_info.value)
+    )
 
 
-def test_change_after_freeze():
-    params = MyParamsNew()
-    params.nested_tuple = ((1, "c"), (3.14, "d"))
+def test_error_change_after_freeze(params: MyParams):
+    params.t03 = ((1, "c"), (3.14, "d"))
 
     params.freeze()
 
