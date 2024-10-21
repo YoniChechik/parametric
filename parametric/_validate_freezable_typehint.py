@@ -6,7 +6,7 @@ from typing import Literal, Tuple, Type, Union, get_origin
 from typing_extensions import get_args
 
 
-def _validate_immutable_typehint(type_name: str, typehint: Type) -> None:
+def _validate_freezable_typehint(type_name: str, typehint: Type) -> None:
     # ==== basic types
     if typehint in (int, float, bool, str, bytes, Path, type(None)):
         return
@@ -22,29 +22,32 @@ def _validate_immutable_typehint(type_name: str, typehint: Type) -> None:
     # == union
     if outer_type in {Union, UnionType}:
         for arg in inner_args:
-            _validate_immutable_typehint(type_name, arg)
+            _validate_freezable_typehint(type_name, arg)
         return
 
     # == tuple
+    # NOTE: this way you check empty tuple. outer_type & inner_args are None
+    if typehint in {tuple, Tuple}:
+        _raise_empty_tuple(type_name)
+
     if outer_type in {tuple, Tuple}:
-        if len(inner_args) == 0:
-            raise RuntimeError(f"In {type_name}, must declere args for tuple typehint, e.g. tuple[int]")
         # NOTE: this state is already covered in pydantic
         # if len(inner_args) == 1 and inner_args[0] is Ellipsis:
         #     raise RuntimeError(f"In {type_name}, tuple typehint cannot have `...` as the only arg")
         for arg in inner_args:
             if arg is Ellipsis:
                 continue
-            _validate_immutable_typehint(type_name, arg)
+            _validate_freezable_typehint(type_name, arg)
         return
-    # NOTE spacial case for field like tuple[tuple] <- no inner args
-    if isinstance(typehint, type(tuple)):
-        raise RuntimeError(f"In {type_name}, must declere args for tuple typehint, e.g. tuple[int]")
 
     # == literals
     if outer_type is Literal:
         for arg in inner_args:
-            _validate_immutable_typehint(type_name, type(arg))
+            _validate_freezable_typehint(type_name, type(arg))
         return
 
-    raise RuntimeError(f"In {type_name}, typehint {typehint} is not allowed because it is not immutable")
+    raise RuntimeError(f"Can't freeze {type_name}. Typehint {typehint} is not allowed because it is not immutable")
+
+
+def _raise_empty_tuple(type_name):
+    raise RuntimeError(f"Can't freeze {type_name}. You must declere args for tuple typehint, e.g. tuple[int]")

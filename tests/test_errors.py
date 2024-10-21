@@ -57,33 +57,39 @@ def test_error_change_after_freeze(params: MyParams):
     assert "Instance is frozen" in str(exc_info.value)
 
 
-def test_error_mutable_field():
+def test_error_mutable_field_on_freeze():
     class Test(BaseParams):
         list_param: list[int] = [1, 2, 3]
 
+    t = Test()
     with pytest.raises(Exception) as exc_info:
-        Test()
-    assert "typehint list[int] is not allowed because it is not immutable" in str(exc_info.value)
+        t.freeze()
+    assert "Can't freeze list_param. Typehint list[int] is not allowed because it is not immutable" in str(
+        exc_info.value
+    )
 
 
-def test_error_tuple_no_inner_args():
+def test_error_tuple_no_inner_args_on_freeze():
     class Test(BaseParams):
         t: tuple = (1, 2, 3)
 
+    t = Test()
     with pytest.raises(Exception) as exc_info:
-        Test()
-    assert "In t, must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
+        t.freeze()
+    assert "Can't freeze t. You must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
 
     class Test2(BaseParams):
         t: Tuple = (1, 2, 3)
 
+    t = Test2()
     with pytest.raises(Exception) as exc_info:
-        Test2()
-    assert "In t, must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
+        t.freeze()
+    assert "Can't freeze t. You must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
 
     class Test3(BaseParams):
         t: tuple[tuple] = ((1, 2, 3),)
 
+    t = Test3()
     with pytest.raises(Exception) as exc_info:
-        Test3()
-    assert "In t, must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
+        t.freeze()
+    assert "Can't freeze t. You must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)

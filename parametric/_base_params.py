@@ -7,23 +7,10 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, field_serializer
 
-from parametric._typehints import _validate_immutable_typehint
+from parametric._validate_freezable_typehint import _validate_freezable_typehint
 
 
 class BaseParams(BaseModel):
-    def __init__(self, *args, **kwargs):
-        # currently i don't know a way to set private vars because it will be a part of the model
-        super().__init__(*args, **kwargs)
-        self._validate_immutable_typehints()
-
-    def _validate_immutable_typehints(self):
-        for field_name, field_info in self.model_fields.items():
-            if isinstance(field_info.annotation, type) and issubclass(field_info.annotation, BaseParams):
-                inner_base_params: BaseParams = getattr(self, field_name)
-                inner_base_params._validate_immutable_typehints()
-            else:
-                _validate_immutable_typehint(field_name, field_info.annotation)
-
     class Config:
         # validate after each assignment
         validate_assignment = True
@@ -109,11 +96,13 @@ class BaseParams(BaseModel):
             yaml.dump(self.model_dump_serializable(), file)
 
     def freeze(self):
-        self.model_config["frozen"] = True
         for field_name, field_info in self.model_fields.items():
             if isinstance(field_info.annotation, type) and issubclass(field_info.annotation, BaseParams):
                 inner_base_params: BaseParams = getattr(self, field_name)
-                inner_base_params.model_config["frozen"] = True
+                inner_base_params.freeze()
+            else:
+                _validate_freezable_typehint(field_name, field_info.annotation)
+        self.model_config["frozen"] = True
 
     # ==== serializing
     @field_serializer("*", when_used="json")
