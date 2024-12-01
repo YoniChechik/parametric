@@ -1,3 +1,9 @@
+## [0.8.0] - 2024-12-01
+
+- Works on python 3.10 (#83)
+- make-instance-frozen-by-default (#82)
+- check immutability only on freeze
+
 ## [0.7.2] - 2024-10-15
 
 - bugfix coerced non defaults
