@@ -6,7 +6,7 @@ from typing import Literal, Tuple, Type, Union, get_origin
 from typing_extensions import get_args
 
 
-def _validate_freezable_typehint(type_name: str, typehint: Type) -> None:
+def _validate_immutable_typehint(type_name: str, typehint: Type) -> None:
     # ==== basic types
     if typehint in (int, float, bool, str, bytes, Path, type(None)):
         return
@@ -22,7 +22,7 @@ def _validate_freezable_typehint(type_name: str, typehint: Type) -> None:
     # == union
     if outer_type in {Union, UnionType}:
         for arg in inner_args:
-            _validate_freezable_typehint(type_name, arg)
+            _validate_immutable_typehint(type_name, arg)
         return
 
     # == tuple
@@ -37,17 +37,17 @@ def _validate_freezable_typehint(type_name: str, typehint: Type) -> None:
         for arg in inner_args:
             if arg is Ellipsis:
                 continue
-            _validate_freezable_typehint(type_name, arg)
+            _validate_immutable_typehint(type_name, arg)
         return
 
     # == literals
     if outer_type is Literal:
         for arg in inner_args:
-            _validate_freezable_typehint(type_name, type(arg))
+            _validate_immutable_typehint(type_name, type(arg))
         return
 
-    raise RuntimeError(f"Can't freeze {type_name}. Typehint {typehint} is not allowed because it is not immutable")
+    raise RuntimeError(f"Can't create {type_name}. Typehint {typehint} is not allowed because it is not immutable")
 
 
 def _raise_empty_tuple(type_name):
-    raise RuntimeError(f"Can't freeze {type_name}. You must declere args for tuple typehint, e.g. tuple[int]")
+    raise RuntimeError(f"Can't create {type_name}. You must declere args for tuple typehint, e.g. tuple[int]")
