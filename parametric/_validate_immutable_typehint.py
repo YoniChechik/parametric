@@ -3,12 +3,13 @@ from pathlib import Path
 from types import UnionType
 from typing import Literal, Tuple, Type, Union, get_origin
 
+import numpy as np
 from typing_extensions import get_args
 
 
 def _validate_immutable_typehint(type_name: str, typehint: Type) -> None:
     # ==== basic types
-    if typehint in (int, float, bool, str, bytes, Path, type(None)):
+    if typehint in (int, float, bool, str, bytes, Path, type(None), np.ndarray):
         return
 
     # == enums
