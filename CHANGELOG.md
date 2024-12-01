@@ -2,7 +2,6 @@
 
 - Works on python 3.10 (#83)
 - make-instance-frozen-by-default (#82)
-- check immutability only on freeze
 
 ## [0.7.2] - 2024-10-15
 
