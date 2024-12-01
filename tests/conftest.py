@@ -2,6 +2,7 @@
 specific file name that we can build fixtures and use them in all other test files for pytest
 """
 
+import warnings
 from enum import Enum
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
@@ -9,6 +10,8 @@ from typing import Literal, Optional, Tuple, Union
 import pytest
 
 from parametric import BaseParams
+
+warnings.filterwarnings("error")
 
 
 # Define Enums
@@ -85,7 +88,7 @@ class MyParams(A):
 
 @pytest.fixture
 def params():
-    # TODO bug here that model gets frozen when running many tests at once
+    # TODO bug here that model isn't frozen when running many tests at once
     x = MyParams()
-    x.model_config["frozen"] = False
+    x._set_freeze(True)
     return x

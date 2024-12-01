@@ -5,8 +5,6 @@ from tests.conftest import MyParams
 
 
 def test_save_yaml(params: MyParams):
-    params.freeze()
-
     with NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp_yaml:
         tmp_yaml_name = tmp_yaml.name
         params.save_yaml(tmp_yaml_name)
@@ -36,7 +34,5 @@ def _compare_strings_with_multiple_newlines(string1: str, string2: str) -> None:
 
 
 def test_to_dict(params: MyParams):
-    params.freeze()
-
     params_dict = params.model_dump_serializable()
     assert params_dict["p04"] == "/xx/path"

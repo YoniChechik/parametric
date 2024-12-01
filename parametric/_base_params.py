@@ -5,30 +5,54 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, ConfigDict, field_serializer
 
-from parametric._validate_freezable_typehint import _validate_freezable_typehint
+from parametric._validate_immutable_typehint import _validate_immutable_typehint
 
 
 class BaseParams(BaseModel):
-    class Config:
+    def __init__(self, *args, **kwargs):
+        # currently I don't know a way to set private vars because it will be a part of the model
+        super().__init__(*args, **kwargs)
+        self._validate_immutable_typehints()
+
+    def _validate_immutable_typehints(self):
+        for field_name, field_info in self.model_fields.items():
+            if isinstance(field_info.annotation, type) and issubclass(field_info.annotation, BaseParams):
+                inner_base_params: BaseParams = getattr(self, field_name)
+                inner_base_params._validate_immutable_typehints()
+            else:
+                _validate_immutable_typehint(field_name, field_info.annotation)
+
+    model_config = ConfigDict(
         # validate after each assignment
-        validate_assignment = True
+        validate_assignment=True,
         # to freeze later
-        frozen = False
+        frozen=True,
         # don't allow new fields after init
-        extra = "forbid"
+        extra="forbid",
         # validate default values
-        validate_default = True
+        validate_default=True,
+    )
 
     def override_from_dict(self, data: dict[str, Any]):
+        self._set_freeze(False)
         for k, v in data.items():
             # NOTE: this also validates
             setattr(self, k, v)
+        self._set_freeze(True)
+
+    def _set_freeze(self, is_frozen: bool):
+        for field_name, field_info in self.model_fields.items():
+            if isinstance(field_info.annotation, type) and issubclass(field_info.annotation, BaseParams):
+                inner_base_params: BaseParams = getattr(self, field_name)
+                inner_base_params._set_freeze(is_frozen)
+        self.model_config["frozen"] = is_frozen
 
     def model_dump_non_defaults(self):
         changed = {}
         default_params = self.model_copy()
+        default_params._set_freeze(False)
         for field_name, field_info in self.model_fields.items():
             # fixing the problem where default from field info isn't coerced:
             # for example: a user can define Path() as parameter type but insert a default str.
@@ -94,15 +118,6 @@ class BaseParams(BaseModel):
     def save_yaml(self, save_path: str | Path):
         with open(save_path, "w") as file:
             yaml.dump(self.model_dump_serializable(), file)
-
-    def freeze(self):
-        for field_name, field_info in self.model_fields.items():
-            if isinstance(field_info.annotation, type) and issubclass(field_info.annotation, BaseParams):
-                inner_base_params: BaseParams = getattr(self, field_name)
-                inner_base_params.freeze()
-            else:
-                _validate_freezable_typehint(field_name, field_info.annotation)
-        self.model_config["frozen"] = True
 
     # ==== serializing
     @field_serializer("*", when_used="json")

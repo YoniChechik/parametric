@@ -39,11 +39,7 @@ def test_invalid_overrides(params: MyParams):
     )
 
 
-def test_error_change_after_freeze(params: MyParams):
-    params.t03 = ((1, "c"), (3.14, "d"))
-
-    params.freeze()
-
+def test_error_change_directly(params: MyParams):
     with pytest.raises(Exception) as exc_info:
         params.t03 = ((2, "xxx"), (2, "xxx"))
     assert "Instance is frozen" in str(exc_info.value)
@@ -52,44 +48,36 @@ def test_error_change_after_freeze(params: MyParams):
         params.bp01.t03 = ((2, "xxx"), (2, "xxx"))
     assert "Instance is frozen" in str(exc_info.value)
 
-    with pytest.raises(Exception) as exc_info:
-        params.bp01.t03 = ((2, "xxx"), (2, "xxx"))
-    assert "Instance is frozen" in str(exc_info.value)
 
-
-def test_error_mutable_field_on_freeze():
+def test_error_mutable_field():
     class Test(BaseParams):
         list_param: list[int] = [1, 2, 3]
 
-    t = Test()
     with pytest.raises(Exception) as exc_info:
-        t.freeze()
-    assert "Can't freeze list_param. Typehint list[int] is not allowed because it is not immutable" in str(
+        Test()
+    assert "Can't create list_param. Typehint list[int] is not allowed because it is not immutable" in str(
         exc_info.value
     )
 
 
-def test_error_tuple_no_inner_args_on_freeze():
+def test_error_tuple_no_inner_args():
     class Test(BaseParams):
         t: tuple = (1, 2, 3)
 
-    t = Test()
     with pytest.raises(Exception) as exc_info:
-        t.freeze()
-    assert "Can't freeze t. You must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
+        Test()
+    assert "Can't create t. You must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
 
     class Test2(BaseParams):
         t: Tuple = (1, 2, 3)
 
-    t = Test2()
     with pytest.raises(Exception) as exc_info:
-        t.freeze()
-    assert "Can't freeze t. You must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
+        Test2()
+    assert "Can't create t. You must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
 
     class Test3(BaseParams):
         t: tuple[tuple] = ((1, 2, 3),)
 
-    t = Test3()
     with pytest.raises(Exception) as exc_info:
-        t.freeze()
-    assert "Can't freeze t. You must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
+        Test3()
+    assert "Can't create t. You must declere args for tuple typehint, e.g. tuple[int]" in str(exc_info.value)
