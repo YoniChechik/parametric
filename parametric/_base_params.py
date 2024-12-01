@@ -18,9 +18,9 @@ class BaseParams(BaseModel):
 
     def _validate_immutable_typehints(self):
         for field_name, field_info in self.model_fields.items():
-            if isinstance(field_info.annotation, type) and issubclass(field_info.annotation, BaseParams):
-                inner_base_params: BaseParams = getattr(self, field_name)
-                inner_base_params._validate_immutable_typehints()
+            var = getattr(self, field_name)
+            if isinstance(var, BaseParams):
+                var._validate_immutable_typehints()
             else:
                 _validate_immutable_typehint(field_name, field_info.annotation)
 
@@ -43,24 +43,20 @@ class BaseParams(BaseModel):
         self._set_freeze(True)
 
     def _set_freeze(self, is_frozen: bool):
-        for field_name, field_info in self.model_fields.items():
-            if isinstance(field_info.annotation, type) and issubclass(field_info.annotation, BaseParams):
-                inner_base_params: BaseParams = getattr(self, field_name)
-                inner_base_params._set_freeze(is_frozen)
+        for field_name in self.model_fields:
+            var = getattr(self, field_name)
+            if isinstance(var, BaseParams):
+                var._set_freeze(is_frozen)
         self.model_config["frozen"] = is_frozen
 
     def model_dump_non_defaults(self):
         changed = {}
-        default_params = self.model_copy()
+        default_params = self.__class__()
         default_params._set_freeze(False)
-        for field_name, field_info in self.model_fields.items():
-            # fixing the problem where default from field info isn't coerced:
-            # for example: a user can define Path() as parameter type but insert a default str.
-            # here we coerce the default to be Path() so it's the same as the actual value
-            setattr(default_params, field_name, field_info.get_default())
-            # getattr of-course returns us the coerce result...
+        for field_name in self.model_fields:
+            default_value = getattr(default_params, field_name)
             current_value = getattr(self, field_name)
-            if current_value != getattr(default_params, field_name):
+            if current_value != default_value:
                 changed[field_name] = current_value
         return changed
 
