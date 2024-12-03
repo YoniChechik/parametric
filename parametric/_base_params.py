@@ -82,7 +82,7 @@ class BaseParams:
         override_dict = {}
         for name, value in data.items():
             if name not in self._name_to_type_node:
-                raise RuntimeError(f"param name '{name}' does not exist")
+                raise RuntimeError(f"Parameter name '{name}' does not exist")
 
             override_dict |= self._convert_and_set(name, value, conversion_from_type)
 

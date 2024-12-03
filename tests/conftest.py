@@ -84,14 +84,18 @@ class A(BaseParams):
     e02: StatusCode = StatusCode.SUCCESS
 
 
-class MyParams(A):
+class B(A):
     """
     all fields from above are fields here + a complex field that also has all
     """
 
     bp01: A = A()
-    # bp02: A | None = A()
-    # bp03: A | None = None
+    bp02: A | None = A()
+    bp03: A | None = None
+
+
+class MyParams(B):
+    xxx: int = 1
 
 
 @pytest.fixture(scope="function")  # generate new instance for each test function

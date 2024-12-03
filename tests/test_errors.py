@@ -24,6 +24,10 @@ def test_invalid_overrides(params: MyParams):
         params.override_from_dict({"i04": "not an int or float"})
     assert "Type coercion error" in str(exc_info.value)
 
+    with pytest.raises(Exception) as exc_info:
+        params.override_from_dict({"non_existent_param": 123})
+    assert "Parameter name 'non_existent_param' does not exist" in str(exc_info.value)
+
 
 def test_error_change_directly(params: MyParams):
     with pytest.raises(Exception) as exc_info:
@@ -65,3 +69,9 @@ def test_error_tuple_no_inner_args():
     with pytest.raises(Exception) as exc_info:
         Test3()
     assert "Type hint for t cannot be 'tuple' without specifying element types" in str(exc_info.value)
+
+
+def test_error_initialize_base_params():
+    with pytest.raises(Exception) as exc_info:
+        BaseParams()
+    assert "BaseParams cannot be instantiated directly" in str(exc_info.value)

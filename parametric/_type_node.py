@@ -248,7 +248,7 @@ class TupleNode(CompoundTypeNode):
         return list(node.to_dumpable(v) for node, v in self._cast_prolog(value))
 
 
-_precedence_list = [
+_precedence_list_high_to_low = [
     EnumNode,
     LiteralNode,
     BoolNode,
@@ -259,8 +259,9 @@ _precedence_list = [
     BytesNode,
     PathNode,
     StrNode,
+    BaseParamsNode,
 ]
-_precedence = {type_node: i for i, type_node in enumerate(_precedence_list)}
+_precedence = {type_node: i for i, type_node in enumerate(_precedence_list_high_to_low)}
 
 
 class UnionNode(CompoundTypeNode):
