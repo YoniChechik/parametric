@@ -138,3 +138,28 @@ def test_error_Union_no_inner_args(params: MyParams):
     assert "Type hint for array_param cannot be 'Union' without specifying element types (e.g. Union[int, str])" in str(
         exc_info.value
     )
+
+
+def test_error_changing_frozen_np_array():
+    class Test(BaseParams):
+        array_param: np.ndarray[int] = np.array([1, 2, 3])
+
+    t = Test()
+
+    # can't change frozen np.array
+    with pytest.raises(Exception) as exc_info:
+        t.array_param[0] = 123
+    assert "assignment destination is read-only" in str(exc_info.value)
+
+    # still reference the same object
+    tt = np.asarray(t.array_param)
+    with pytest.raises(Exception) as exc_info:
+        tt[0] = 123
+    assert "assignment destination is read-only" in str(exc_info.value)
+
+    # copy the object- now we can change it
+    tt = np.copy(t.array_param)
+    tt[0] = 123
+
+    tt = np.array(t.array_param)
+    tt[0] = 123
