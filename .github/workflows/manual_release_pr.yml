@@ -43,7 +43,7 @@ jobs:
       - name: Update files for release
         id: update_files
         run: |
-          new_version=$(python .github/workflows/manual_release_pr_update_files.py ${{ github.event.inputs.release_type }})
+          new_version=$(uv run .github/workflows/manual_release_pr_update_files.py ${{ github.event.inputs.release_type }})
           echo "new_version=${new_version}" >> $GITHUB_OUTPUT
 
       # ===== test the package
