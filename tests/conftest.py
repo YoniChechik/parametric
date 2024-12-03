@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
 
+import numpy as np
 import pytest
 
 from parametric import BaseParams
@@ -28,6 +29,10 @@ class StatusCode(Enum):
 
 
 class A(BaseParams):
+    np01: np.ndarray[int] = np.array([1, 2, 3])
+    np02: np.ndarray[int] = [1, 2, 3]
+    np03: np.ndarray[float] | None = [[1, 2, 3], [4, 5, 6]]
+
     # For int
     i01: int = 1
     i03: int | None = None
@@ -78,17 +83,23 @@ class A(BaseParams):
     e02: StatusCode = StatusCode.SUCCESS
 
 
-class MyParams(A):
+class B(A):
     """
     all fields from above are fields here + a complex field that also has all
     """
 
     bp01: A = A()
+    bp02: A | None = A()
+    bp03: A | None = None
 
 
-@pytest.fixture
+class MyParams(B):
+    xxx: int = 1
+
+
+@pytest.fixture(scope="function")  # generate new instance for each test function
 def params():
-    # TODO bug here that model isn't frozen when running many tests at once
     x = MyParams()
+    # TODO still fucks up if not explicitly set
     x._set_freeze(True)
     return x

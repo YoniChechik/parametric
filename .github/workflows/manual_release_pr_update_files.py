@@ -16,12 +16,7 @@ class ReleaseType(str, Enum):
         return list(map(lambda rt: rt.value, ReleaseType))
 
 
-def parse_requirements(filename):
-    with open(filename) as f:
-        return [line.strip() for line in f if line.strip() and not line.startswith("#")]
-
-
-def bump_version(version, release_type):
+def _bump_version(version, release_type):
     major, minor, patch = map(int, version.split("."))
     if release_type == ReleaseType.PATCH:
         patch += 1
@@ -37,24 +32,17 @@ def bump_version(version, release_type):
     return f"{major}.{minor}.{patch}"
 
 
-def update_pyproject(dependencies, release_type):
+def update_pyproject_version(release_type):
     with open("pyproject.toml") as f:
         pyproject = tomlkit.parse(f.read())
 
     # Ensure 'project' and 'dependencies' sections exist
     if "project" not in pyproject:
         pyproject["project"] = tomlkit.table()
-    if "dependencies" not in pyproject["project"]:
-        pyproject["project"]["dependencies"] = tomlkit.array()
-
-    # Update dependencies
-    pyproject["project"]["dependencies"].clear()
-    for dep in dependencies:
-        pyproject["project"]["dependencies"].append(dep)
 
     # Bump version
     current_version = pyproject["project"]["version"]
-    new_version = bump_version(current_version, release_type)
+    new_version = _bump_version(current_version, release_type)
 
     pyproject["project"]["version"] = new_version
 
@@ -101,8 +89,7 @@ if __name__ == "__main__":
         )
 
     release_type = sys.argv[1]
-    deps = parse_requirements("requirements.txt")
-    last_version, new_version = update_pyproject(deps, release_type)
+    last_version, new_version = update_pyproject_version(release_type)
 
     # Update CHANGELOG.md
     update_changelog(last_version, new_version)
