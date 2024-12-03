@@ -2,6 +2,8 @@ from enum import Enum, EnumMeta
 from pathlib import Path
 from typing import Any, Generic, Literal, Tuple, TypeVar, Union
 
+import numpy as np
+
 from parametric._helpers import ConversionFromType
 
 
@@ -37,6 +39,27 @@ class TypeNode(Generic[T]):
         if isinstance(value, self.type):
             return value
         raise TypeCoercionError()
+
+
+class NumpyNode(TypeNode[np.ndarray]):
+    def __init__(self, inner_arg: TypeNode) -> None:
+        super().__init__(np.ndarray)
+        self._inner_arg = inner_arg
+
+    def __repr__(self) -> str:
+        return f"{self.type.__name__}[{self._inner_arg}]"
+
+    def from_python_object(self, value: Any) -> T:
+        try:
+            arr = np.array(value, dtype=self._inner_arg.type)
+            arr.flags.writeable = False
+            return arr
+
+        except Exception:
+            raise TypeCoercionError()
+
+    def to_dumpable(self, value: np.ndarray) -> list:
+        return value.tolist()
 
 
 class IntNode(TypeNode[int]):
@@ -255,6 +278,7 @@ _precedence_list_high_to_low = [
     IntNode,
     FloatNode,
     NoneTypeNode,
+    NumpyNode,
     TupleNode,
     BytesNode,
     PathNode,
