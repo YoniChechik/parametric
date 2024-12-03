@@ -1,3 +1,8 @@
+## [0.9.0] - 2024-12-03
+
+- Use 'uv run' to execute the release update script
+- Numpy + uv (#85)
+
 ## [0.8.0] - 2024-12-01
 
 - Works on python 3.10 (#83)
