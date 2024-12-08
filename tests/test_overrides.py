@@ -95,4 +95,4 @@ def test_combined_overrides(monkeypatch: pytest.MonkeyPatch, params: MyParams):
     assert params.f03 == 12.5
     assert params.f04 == 0.001
 
-    assert params.model_dump_non_defaults() == {"i01": 11, "s01": "aaa", "f03": 12.5, "f04": 0.001}
+    assert params.get_non_defaults() == {"i01": 11, "s01": "aaa", "f03": 12.5, "f04": 0.001}

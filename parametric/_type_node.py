@@ -157,15 +157,15 @@ class BaseParamsNode(TypeNode):
         from parametric._base_params import BaseParams
 
         super().__init__(BaseParams)
-        self.base_params_type: BaseParams = base_params_type
+        self.derived_type: BaseParams = base_params_type
 
     def __repr__(self) -> str:
-        return f"{self.base_params_type.__name__}(BaseParams)"
+        return f"{self.derived_type.__name__}(BaseParams)"
 
     def from_python_object(self, value: Any):
         from parametric._base_params import BaseParams
 
-        if isinstance(value, self.base_params_type):
+        if isinstance(value, self.derived_type):
             value: BaseParams
             return value
         raise TypeCoercionError("Value is not a BaseParams instance")
@@ -174,14 +174,19 @@ class BaseParamsNode(TypeNode):
         from parametric._base_params import BaseParams
 
         if isinstance(value, dict):
-            instance: BaseParams = self.base_params_type()
+            instance: BaseParams = self.derived_type()
             instance._override_from_dict(value, conversion_from_type=ConversionFromType.DUMPABLE)
             return instance
 
-        raise TypeCoercionError(f"Cannot convert {value} to {self.base_params_type} (derived BaseParams)")
+        raise TypeCoercionError(f"Cannot convert {value} to {self.derived_type} (derived BaseParams)")
 
     def to_dumpable(self, value) -> dict:
-        raise Exception("Can't cast dumpable")
+        from parametric._base_params import BaseParams
+
+        if isinstance(value, self.derived_type):
+            value: BaseParams
+            return value.to_dumpable_dict()
+        raise TypeCoercionError("Value is not a BaseParams instance")
 
 
 class LiteralNode(TypeNode[Any]):

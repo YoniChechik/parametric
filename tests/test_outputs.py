@@ -34,5 +34,5 @@ def _compare_strings_with_multiple_newlines(string1: str, string2: str) -> None:
 
 
 def test_to_dict(params: MyParams):
-    params_dict = params.to_dumpable_dict()
+    params_dict = params.get_dumpable_dict()
     assert params_dict["p03"] == "/xx/path"

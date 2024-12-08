@@ -1,23 +1,12 @@
 import enum
-import os
 from pathlib import Path
 from typing import Any, get_type_hints
 
 import numpy as np
 import yaml
 
+from parametric._context_manager import Override
 from parametric._helpers import ConversionFromType
-from parametric._type_node import (
-    BoolNode,
-    BytesNode,
-    EnumNode,
-    FloatNode,
-    IntNode,
-    LiteralNode,
-    NoneTypeNode,
-    PathNode,
-    StrNode,
-)
 from parametric._typehint_parsing import parse_typehint
 
 
@@ -77,21 +66,6 @@ class BaseParams:
         setattr(self, name, converted_val)
         return {name: converted_val}
 
-    def override_from_dict(self, data: dict[str, Any]):
-        self._override_from_dict(data, conversion_from_type=ConversionFromType.PYTHON_OBJECT)
-
-    def _override_from_dict(self, data: dict[str, Any], conversion_from_type: ConversionFromType) -> None:
-        self._set_freeze(False)
-
-        override_dict = {}
-        for name, value in data.items():
-            if name not in self._name_to_type_node:
-                raise RuntimeError(f"Parameter name '{name}' does not exist")
-
-            override_dict |= self._convert_and_set(name, value, conversion_from_type)
-
-        self._set_freeze(True)
-
     def _set_freeze(self, is_frozen: bool) -> None:
         for name in self._name_to_type_node:
             if name in self._inner_params_that_are_baseparam_class:
@@ -100,43 +74,7 @@ class BaseParams:
 
         self._is_frozen = is_frozen
 
-    def model_dump_non_defaults(self):
-        changed = {}
-        for field_name, def_val in self._default_values.items():
-            curr_val = getattr(self, field_name)
-            if not self._is_equal_field(def_val, curr_val):
-                changed[field_name] = curr_val
-        return changed
-
-    def override_from_cli(self) -> None:
-        import argparse
-
-        # Initialize the parser
-        parser = argparse.ArgumentParser()
-
-        # Add arguments
-        for name, type_node in self._name_to_type_node.items():
-            if isinstance(
-                type_node,
-                (
-                    IntNode,
-                    FloatNode,
-                    StrNode,
-                    BoolNode,
-                    BytesNode,
-                    PathNode,
-                    NoneTypeNode,
-                    LiteralNode,
-                    EnumNode,
-                ),
-            ):
-                parser.add_argument(f"--{name}", type=str, required=False)
-
-        args = parser.parse_args()
-        changed_params = {k: v for k, v in vars(args).items() if parser.get_default(k) != v}
-
-        self._override_from_dict(changed_params, conversion_from_type=ConversionFromType.STR)
-
+    # ========= overide methods =========
     def override_from_yaml_file(self, filepath: Path | str) -> None:
         filepath = Path(filepath)
         if not filepath.is_file():
@@ -149,44 +87,42 @@ class BaseParams:
 
         self._override_from_dict(changed_params, conversion_from_type=ConversionFromType.DUMPABLE)
 
-    def override_from_envs(self, env_prefix: str = "_param_") -> None:
-        # Build a dictionary mapping lowercase names to actual case-sensitive names
-        lower_to_actual_case = {}
-        for name in self._name_to_type_node:
-            lower_name = name.lower()
-            if lower_name in lower_to_actual_case:
-                conflicting_name = lower_to_actual_case[lower_name]
-                raise RuntimeError(
-                    f"Parameter names '{name}' and '{conflicting_name}' conflict when considered in lowercase.",
-                )
-            lower_to_actual_case[lower_name] = name
+    def override_from_dict(self, data: dict[str, Any]):
+        self._override_from_dict(data, conversion_from_type=ConversionFromType.PYTHON_OBJECT)
 
-        changed_params = {}
-        for key, value in os.environ.items():
-            if not key.lower().startswith(env_prefix):
-                continue
-            param_key = key[len(env_prefix) :].lower()
+    def override_from_dict_of_str(self, data: dict[str, str]):
+        self._override_from_dict(data, conversion_from_type=ConversionFromType.STR)
 
-            if param_key in lower_to_actual_case:
-                actual_name = lower_to_actual_case[param_key]
-                changed_params[actual_name] = value
+    def _override_from_dict(self, data: dict[str, Any], conversion_from_type: ConversionFromType) -> None:
+        with Override(self):
+            override_dict = {}
+            for name, value in data.items():
+                if name not in self._name_to_type_node:
+                    raise RuntimeError(f"Parameter name '{name}' does not exist")
 
-        self._override_from_dict(changed_params, conversion_from_type=ConversionFromType.STR)
+                override_dict |= self._convert_and_set(name, value, conversion_from_type)
 
-    def to_dumpable_dict(self) -> dict[str, Any]:
+    # ========== output methods =========
+    def get_non_defaults(self):
+        changed = {}
+        for field_name, def_val in self._default_values.items():
+            curr_val = getattr(self, field_name)
+            if not self._is_equal_field(def_val, curr_val):
+                changed[field_name] = curr_val
+        return changed
+
+    def get_dumpable_dict(self) -> dict[str, Any]:
         dumpable_dict_res = {}
         for name, type_node in self._name_to_type_node.items():
             val = getattr(self, name)
-            if isinstance(val, BaseParams):
-                dumpable_dict_res[name] = val.to_dumpable_dict()
-            else:
-                dumpable_dict_res[name] = type_node.to_dumpable(val)
+            dumpable_dict_res[name] = type_node.to_dumpable(val)
         return dumpable_dict_res
 
     def save_yaml(self, filepath: str) -> None:
         with open(filepath, "w") as stream:
-            yaml.dump(self.to_dumpable_dict(), stream)
+            yaml.dump(self.get_dumpable_dict(), stream)
 
+    # ======== private methods =========
     def __eq__(self, other: "BaseParams"):
         if not isinstance(other, BaseParams):
             return False
