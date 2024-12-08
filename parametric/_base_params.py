@@ -57,19 +57,23 @@ class BaseParams:
         return hints
 
     def _convert_and_set(self, name: str, value: Any, conversion_from_type: ConversionFromType) -> dict[str, Any]:
-        if conversion_from_type == ConversionFromType.PYTHON_OBJECT:
-            converted_val = self._name_to_type_node[name].from_python_object(value)
-        elif conversion_from_type == ConversionFromType.DUMPABLE:
-            converted_val = self._name_to_type_node[name].from_dumpable(value)
-        elif conversion_from_type == ConversionFromType.STR:
-            converted_val = self._name_to_type_node[name].from_str(value)
-        else:
-            raise Exception(f"unsupported conversion_from_type {conversion_from_type}")
+        try:
+            if conversion_from_type == ConversionFromType.PYTHON_OBJECT:
+                converted_val = self._name_to_type_node[name].from_python_object(value)
+            elif conversion_from_type == ConversionFromType.DUMPABLE:
+                converted_val = self._name_to_type_node[name].from_dumpable(value)
+            elif conversion_from_type == ConversionFromType.STR:
+                converted_val = self._name_to_type_node[name].from_str(value)
+            else:
+                raise Exception(f"unsupported conversion_from_type {conversion_from_type}")
 
-        if isinstance(converted_val, BaseParams):
-            self._inner_params_that_are_baseparam_class.add(name)
-        else:
-            self._inner_params_that_are_baseparam_class.discard(name)
+            if isinstance(converted_val, BaseParams):
+                self._inner_params_that_are_baseparam_class.add(name)
+            else:
+                self._inner_params_that_are_baseparam_class.discard(name)
+        except Exception as e:
+            raise AttributeError(f"Cannot convert '{name}': {e}")
+
         setattr(self, name, converted_val)
         return {name: converted_val}
 

@@ -55,12 +55,14 @@ class A(BaseParams):
     b04: bool = True
 
     # For bytes
-    by03: bytes | None = None
-    by04: bytes = b"default"
+    by01: bytes | None = None
+    by02: bytes = b"default"
+    # by03: bytes = "default"  # string
 
     # For Path
-    p03: Path | None = None
-    p04: Path = Path("/xx/path")
+    p01: Path = "/tmp/yy"
+    p02: Path | None = None
+    p03: Path = Path("/xx/path")
 
     # literals
     l01: Literal["a", "b", "c"] = "a"

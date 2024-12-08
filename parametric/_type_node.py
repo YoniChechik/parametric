@@ -8,8 +8,11 @@ from parametric._helpers import ConversionFromType
 
 
 class TypeCoercionError(Exception):
-    def __init__(self, message: str = "Type coercion error"):
-        super().__init__(message)
+    def __init__(self, message: str = ""):
+        res_message = "Type coercion error"
+        if len(message) > 0:
+            res_message += f": {message}"
+        super().__init__(res_message)
 
 
 T = TypeVar("T")
@@ -56,7 +59,7 @@ class NumpyNode(TypeNode[np.ndarray]):
             return arr
 
         except Exception:
-            raise TypeCoercionError()
+            raise TypeCoercionError(f"Cannot convert to numpy array: {value}")
 
     def to_dumpable(self, value: np.ndarray) -> list:
         return value.tolist()
@@ -68,7 +71,7 @@ class IntNode(TypeNode[int]):
 
     def from_str(self, value: str) -> int:
         if not isinstance(value, str):
-            raise TypeCoercionError()
+            raise TypeCoercionError(f"Cannot convert to int from str {value}")
         return int(value)
 
 
@@ -79,11 +82,11 @@ class FloatNode(TypeNode[float]):
     def from_python_object(self, value: float) -> float:
         if isinstance(value, float) or isinstance(value, int):
             return float(value)
-        raise TypeCoercionError()
+        raise TypeCoercionError(f"Cannot convert to float from {value} of type {type(value)}")
 
     def from_str(self, value: str) -> int:
         if not isinstance(value, str):
-            raise TypeCoercionError()
+            raise TypeCoercionError(f"Cannot convert to float from str {value}")
         return float(value)
 
 
@@ -93,7 +96,7 @@ class StrNode(TypeNode[str]):
 
     def from_str(self, value: str) -> str:
         if not isinstance(value, str):
-            raise TypeCoercionError()
+            raise TypeCoercionError("Value is not a string")
         return str(value)
 
 
@@ -103,12 +106,12 @@ class BoolNode(TypeNode[bool]):
 
     def from_str(self, value: str) -> bool:
         if not isinstance(value, str):
-            raise TypeCoercionError()
+            raise TypeCoercionError("Value is not a string")
         if value.lower().strip() in {"0", "-1", "off", "f", "false", "n", "no"}:
             return False
         elif value.lower().strip() in {"1", "on", "t", "true", "y", "yes"}:
             return True
-        raise TypeCoercionError()
+        raise TypeCoercionError(f"Cannot convert {value} of type {type(value)} to bool")
 
 
 class BytesNode(TypeNode[bytes]):
@@ -118,7 +121,7 @@ class BytesNode(TypeNode[bytes]):
     def from_dumpable(self, value: Any) -> bytes:
         if isinstance(value, str):
             return value.encode("utf-8")
-        raise TypeCoercionError()
+        raise TypeCoercionError(f"Cannot convert {value} of type {type(value)} to bytes")
 
     def to_dumpable(self, value: bytes) -> str:
         return self.from_python_object(value).decode("utf-8")
@@ -128,8 +131,12 @@ class PathNode(TypeNode[Path]):
     def __init__(self) -> None:
         super().__init__(Path)
 
-    def from_dumpable(self, value: Any) -> Path:
-        return Path(value)
+    def from_python_object(self, value: Any) -> Path:
+        if isinstance(value, Path):
+            return value
+        elif isinstance(value, str):
+            return Path(value)
+        raise TypeCoercionError(f"Cannot convert {value} of type {type(value)} to Path")
 
     def to_dumpable(self, value: Path) -> str:
         return str(value.as_posix())
@@ -161,7 +168,7 @@ class BaseParamsNode(TypeNode):
         if isinstance(value, self.base_params_type):
             value: BaseParams
             return value
-        raise TypeCoercionError()
+        raise TypeCoercionError("Value is not a BaseParams instance")
 
     def from_dumpable(self, value: dict[str, Any]):
         from parametric._base_params import BaseParams
@@ -236,7 +243,7 @@ class TupleNode(CompoundTypeNode):
 
     def from_python_object(self, value: Any) -> tuple:
         if not isinstance(value, tuple):
-            raise TypeCoercionError()
+            raise TypeCoercionError("Value is not a tuple")
 
         converted_values = []
         for node, v in self._cast_prolog(value):
@@ -257,7 +264,7 @@ class TupleNode(CompoundTypeNode):
 
     def from_str(self, value: str) -> Any:
         if not isinstance(value, str):
-            raise TypeCoercionError()
+            raise TypeCoercionError("Value is not a string")
 
         converted_values = []
         for node, v in self._cast_prolog(value):
@@ -300,7 +307,7 @@ class UnionNode(CompoundTypeNode):
                 return inner_type.from_python_object(value)
             except Exception:
                 continue
-        raise TypeCoercionError()
+        raise TypeCoercionError(f"Value {value} of type {type(value)} is not a supported type")
 
     def from_dumpable(self, value: Any):
         for inner_type in self.sorted_inner_args:
@@ -308,18 +315,18 @@ class UnionNode(CompoundTypeNode):
                 return inner_type.from_dumpable(value)
             except Exception:
                 continue
-        raise TypeCoercionError()
+        raise TypeCoercionError(f"Value {value} of type {type(value)} is not a supported type")
 
     def from_str(self, value: Any):
         if not isinstance(value, str):
-            raise TypeCoercionError()
+            raise TypeCoercionError("Value is not a string")
 
         for inner_type in self.sorted_inner_args:
             try:
                 return inner_type.from_str(value)
             except Exception:
                 continue
-        raise TypeCoercionError()
+        raise TypeCoercionError(f"Value {value} is not a supported type")
 
     def to_dumpable(self, value: Any):
         for inner_type in self.sorted_inner_args:
@@ -327,4 +334,4 @@ class UnionNode(CompoundTypeNode):
                 return inner_type.to_dumpable(value)
             except Exception:
                 continue
-        raise TypeCoercionError()
+        raise TypeCoercionError(f"Value {value} of type {type(value)} is not a supported type")
