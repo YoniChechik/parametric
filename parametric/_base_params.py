@@ -2,12 +2,13 @@ import enum
 import json
 import os
 from pathlib import Path
-from typing import Any, get_args, get_origin
+from typing import Any
 
+import numpy as np
 import yaml
 from pydantic import BaseModel, ConfigDict, field_serializer, model_validator
 
-from parametric._validate_immutable_typehint import _validate_immutable_typehint
+from parametric._validate_immutable_typehint import _validate_np
 
 
 class BaseParams(BaseModel):
@@ -33,25 +34,16 @@ class BaseParams(BaseModel):
     @classmethod
     def _validate_declared_types_immutables(cls, data: Any) -> Any:
         if not isinstance(data, dict):
-            raise ValueError(f"Expected a dictionary, got {data}")
+            raise ValueError(f"Expected a dictionary, got {type(data)}")
         for field_name, field_info in cls.model_fields.items():
-            _validate_immutable_typehint(field_name, field_info.annotation)
+            if field_name in data:
+                def_value = data[field_name]
+            else:
+                def_value = field_info.get_default()
+            fixed_value = _validate_np(field_name, field_info.annotation, def_value)
+            if fixed_value is not None:
+                data[field_name] = fixed_value
 
-            outer_type = get_origin(field_info.annotation)
-            inner_args = get_args(field_info.annotation)
-            if outer_type is np.ndarray:
-                data[field_name] = np.array(field_info.get_default())
-            # if isinstance(var, BaseParams):
-            #     var._validate_immutable_typehints()
-            # else:
-            #
-        return data
-
-        if isinstance(data, dict):
-            if "card_number" in data:
-                raise ValueError("'card_number' should not be included")
-        else:
-            raise ValueError(f"Expected a dictionary, got {data}")
         return data
 
     def override_from_dict(self, data: dict[str, Any]):
@@ -144,130 +136,122 @@ class BaseParams(BaseModel):
     def model_dump_serializable(self):
         return json.loads(self.model_dump_json())
 
+    # ======== private methods =========
     def __eq__(self, other: "BaseParams"):
         if not isinstance(other, BaseParams):
             return False
         for field_name in self.model_fields:
-            self_val = getattr(self, field_name)
-            other_val = getattr(other, field_name)
-            if self_val == other_val:
-                continue
-            # for enums
-            elif (
-                isinstance(self_val, enum.Enum)
-                and isinstance(other_val, enum.Enum)
-                and self_val.value == other_val.value
-            ):
-                continue
-            return False
+            if field_name not in other.model_fields:
+                return False
+            if not self._is_equal_field(getattr(self, field_name), getattr(other, field_name)):
+                return False
         return True
 
-
-# class Test(BaseParams):
-#     param: int = 5
-
-
-# t = Test()
-
-
-# class Test2(Test):
-#     param2: int = 10
-
-
-# t2 = Test2()
-
-import warnings
-from enum import Enum
-from pathlib import Path
-from typing import Literal, Optional, Tuple, Union
-
-import numpy as np
-
-warnings.filterwarnings("error")
+    def _is_equal_field(self, val1: Any, val2: Any) -> bool:
+        # for enums
+        if isinstance(val1, enum.Enum) and isinstance(val2, enum.Enum):
+            return val1.value == val2.value
+        # for np.ndarray
+        if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
+            return np.array_equal(val1, val2)
+        # for all others
+        if val1 == val2:
+            return True
+        return False
 
 
-# Define Enums
-class Color(Enum):
-    RED = "red"
-    GREEN = "green"
-    BLUE = "blue"
+# import warnings
+# from enum import Enum
+# from pathlib import Path
+# from typing import Literal, Optional, Tuple, Union
+
+# import numpy as np
+
+# warnings.filterwarnings("error")
 
 
-class StatusCode(Enum):
-    SUCCESS = 200
-    CLIENT_ERROR = 400
-    SERVER_ERROR = 500
+# # Define Enums
+# class Color(Enum):
+#     RED = "red"
+#     GREEN = "green"
+#     BLUE = "blue"
 
 
-class A(BaseParams):
-    np01: np.ndarray[int] = np.array([1, 2, 3])
-    np02: np.ndarray[int] = [1, 2, 3]
-    # np03: np.ndarray[float] | None = [[1, 2, 3], [4, 5, 6]]
-
-    # For int
-    i01: int = 1
-    i03: int | None = None
-    i04: int | float = 8
-    i05: int | str = 9
-
-    # For str
-    s01: str = "xyz"
-    s03: str | None = None
-    s04: str = "default"
-    s05: str | int = "77"
-
-    # For float
-    f01: float = 0.5
-    f03: float | None = None
-    f04: float = 8.5
-
-    # For bool
-    b03: bool | None = None
-    b04: bool = True
-
-    # For bytes
-    by01: bytes | None = None
-    by02: bytes = b"default"
-    # by03: bytes = "default"  # string
-
-    # For Path
-    p01: Path = "/tmp/yy"
-    p02: Path | None = None
-    p03: Path = Path("/xx/path")
-
-    # literals
-    l01: Literal["a", "b", "c"] = "a"
-
-    # tuples
-    t01: tuple[int, int] = (640, 480)
-    t02: tuple[int, str] = (1, "2")
-    t03: tuple[tuple[int, str], tuple[float, str]] = ((1, "a"), (3.14, "b"))
-    t04: tuple[int, int, int] | None = (1, 2, 3)
-    t05: tuple[int | str, ...] = ("key1", 1)
-
-    # old typehints
-    o01: Tuple[Tuple[int, str], Tuple[float, str]] = ((1, "a"), (3.14, "b"))
-    o02: Optional[Tuple[int, int, int]] = (1, 2, 3)
-    o03: Union[int, float] = 42
-    o04: Tuple[Union[int, str], ...] = ("key1", 1)
-
-    # enums
-    e01: Color = Color.RED
-    e02: StatusCode = StatusCode.SUCCESS
+# class StatusCode(Enum):
+#     SUCCESS = 200
+#     CLIENT_ERROR = 400
+#     SERVER_ERROR = 500
 
 
-class B(A):
-    """
-    all fields from above are fields here + a complex field that also has all
-    """
+# class A(BaseParams):
+#     np01: np.ndarray[int] = np.array([1, 2, 3])
+#     np02: np.ndarray[int] = [1, 2, 3]
+#     # np03: np.ndarray[float] | None = [[1, 2, 3], [4, 5, 6]]
 
-    bp01: A = A()
-    bp02: A | None = A()
-    bp03: A | None = None
+#     # For int
+#     i01: int = 1
+#     i03: int | None = None
+#     i04: int | float = 8
+#     i05: int | str = 9
+
+#     # For str
+#     s01: str = "xyz"
+#     s03: str | None = None
+#     s04: str = "default"
+#     s05: str | int = "77"
+
+#     # For float
+#     f01: float = 0.5
+#     f03: float | None = None
+#     f04: float = 8.5
+
+#     # For bool
+#     b03: bool | None = None
+#     b04: bool = True
+
+#     # For bytes
+#     by01: bytes | None = None
+#     by02: bytes = b"default"
+#     # by03: bytes = "default"  # string
+
+#     # For Path
+#     p01: Path = "/tmp/yy"
+#     p02: Path | None = None
+#     p03: Path = Path("/xx/path")
+
+#     # literals
+#     l01: Literal["a", "b", "c"] = "a"
+
+#     # tuples
+#     t01: tuple[int, int] = (640, 480)
+#     t02: tuple[int, str] = (1, "2")
+#     t03: tuple[tuple[int, str], tuple[float, str]] = ((1, "a"), (3.14, "b"))
+#     t04: tuple[int, int, int] | None = (1, 2, 3)
+#     t05: tuple[int | str, ...] = ("key1", 1)
+
+#     # old typehints
+#     o01: Tuple[Tuple[int, str], Tuple[float, str]] = ((1, "a"), (3.14, "b"))
+#     o02: Optional[Tuple[int, int, int]] = (1, 2, 3)
+#     o03: Union[int, float] = 42
+#     o04: Tuple[Union[int, str], ...] = ("key1", 1)
+
+#     # enums
+#     e01: Color = Color.RED
+#     e02: StatusCode = StatusCode.SUCCESS
 
 
-class MyParams(B):
-    xxx: int = 1
+# class B(A):
+#     """
+#     all fields from above are fields here + a complex field that also has all
+#     """
+
+#     bp01: A = A()
+#     bp02: A | None = A()
+#     bp03: A | None = None
 
 
-x = MyParams()
+# class MyParams(B):
+#     xxx: int = 1
+
+
+# x = MyParams()
