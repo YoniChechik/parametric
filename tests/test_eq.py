@@ -1,4 +1,4 @@
-from parametric._base_params import BaseParams
+from parametric import BaseParams
 
 
 def test_error_base_params_instance_not_int():

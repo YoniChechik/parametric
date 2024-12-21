@@ -85,7 +85,7 @@ def parse_typehint(name: str, typehint: Any) -> TypeNode:
 
     # ==== BaseParams
     # NOTE: This import is here to avoid circular imports
-    from parametric._base_params import BaseParams
+    from parametric._base_params2 import BaseParams
 
     # NOTE in python 3.10 generic alias like list[int] can't be check with issubclass
     if not isinstance(typehint, GenericAlias) and issubclass(typehint, BaseParams):
