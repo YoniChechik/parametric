@@ -7,7 +7,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
 
-import numpy as np
 import pytest
 
 from parametric import BaseParams
@@ -29,8 +28,8 @@ class StatusCode(Enum):
 
 
 class A(BaseParams):
-    np01: np.ndarray[int] = np.array([1, 2, 3])
-    np02: np.ndarray[int] = [1, 2, 3]
+    # np01: np.ndarray[int] = np.array([1, 2, 3])
+    # np02: np.ndarray[int] = [1, 2, 3]
     # np03: np.ndarray[float] | None = [[1, 2, 3], [4, 5, 6]]
 
     # For int
