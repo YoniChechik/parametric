@@ -8,8 +8,8 @@ class Override:
         self._params = params
 
     def __enter__(self):
-        self._params._is_frozen = False
+        self._params._set_freeze(False)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._params._is_frozen = True
+        self._params._set_freeze(True)

@@ -55,21 +55,21 @@ def test_error_tuple_no_inner_args():
 
     with pytest.raises(Exception) as exc_info:
         Test()
-    assert "Type hint for t cannot be 'tuple' without specifying element types" in str(exc_info.value)
+    assert "Type of t cannot be 'tuple' without specifying element types" in str(exc_info.value)
 
     class Test2(BaseParams):
         t: Tuple = (1, 2, 3)
 
     with pytest.raises(Exception) as exc_info:
         Test2()
-    assert "Type hint for t cannot be 'Tuple' without specifying element types" in str(exc_info.value)
+    assert "Type of t cannot be 'Tuple' without specifying element types" in str(exc_info.value)
 
     class Test3(BaseParams):
         t: tuple[tuple] = ((1, 2, 3),)
 
     with pytest.raises(Exception) as exc_info:
         Test3()
-    assert "Type hint for t cannot be 'tuple' without specifying element types" in str(exc_info.value)
+    assert "Type of t cannot be 'tuple' without specifying element types" in str(exc_info.value)
 
 
 def test_error_initialize_base_params():
@@ -78,13 +78,13 @@ def test_error_initialize_base_params():
     assert "BaseParams cannot be instantiated directly" in str(exc_info.value)
 
 
-def test_error_np_array_typehint():
+def test_error_np_array_type():
     class Test(BaseParams):
         array_param: np.array = np.array([1, 2, 3])
 
     with pytest.raises(Exception) as exc_info:
         Test()
-    assert "Type hint for array_param cannot be 'np.array'. Try np.ndarray[int] instead" in str(exc_info.value)
+    assert "Type of array_param cannot be 'np.array'. Try np.ndarray[int] instead" in str(exc_info.value)
 
 
 def test_error_np_ndarray_no_inner_arg():
@@ -93,9 +93,8 @@ def test_error_np_ndarray_no_inner_arg():
 
     with pytest.raises(Exception) as exc_info:
         Test()
-    assert (
-        "Type hint for array_param cannot be 'np.ndarray' without specifying element types (e.g. np.ndarray[int])"
-        in str(exc_info.value)
+    assert "Type of array_param cannot be 'np.ndarray' without specifying element types (e.g. np.ndarray[int])" in str(
+        exc_info.value
     )
 
 
@@ -105,12 +104,12 @@ def test_error_np_ndarray_multiple_inner_arg():
 
     with pytest.raises(Exception) as exc_info:
         Test()
-    assert "Type hint for 'np.ndarray' array_param should have exactly 1 inner args (e.g. np.ndarray[int])" in str(
+    assert "Type of 'np.ndarray' array_param should have exactly 1 inner args (e.g. np.ndarray[int])" in str(
         exc_info.value
     )
 
 
-def test_error_Any_typehint():
+def test_error_Any_type():
     class Test(BaseParams):
         array_param: Any = np.array([1, 2, 3])
 
@@ -119,23 +118,27 @@ def test_error_Any_typehint():
     assert "Type `Any` is not allowed, cannot convert 'array_param'" in str(exc_info.value)
 
 
-def test_error_non_existent_param(params: MyParams):
+def test_error_non_existent_param():
     class Test(BaseParams):
-        array_param: int = 1
+        param: int = 1
 
     t = Test()
     with pytest.raises(Exception) as exc_info:
         t.non_existent_param = 123
-    assert "Can't define parameter non_existent_param after initialization" in str(exc_info.value)
+    assert "Instance is frozen" in str(exc_info.value)
+
+    with pytest.raises(Exception) as exc_info:
+        t.override_from_dict({"non_existent_param": 123})
+    assert "Object has no attribute 'non_existent_param'" in str(exc_info.value)
 
 
-def test_error_Union_no_inner_args(params: MyParams):
+def test_error_Union_no_inner_args():
     class Test(BaseParams):
         array_param: Union = 1  # type: ignore
 
     with pytest.raises(Exception) as exc_info:
         Test()
-    assert "Type hint for array_param cannot be 'Union' without specifying element types (e.g. Union[int, str])" in str(
+    assert "Type of array_param cannot be 'Union' without specifying element types (e.g. Union[int, str])" in str(
         exc_info.value
     )
 
