@@ -7,7 +7,7 @@ import numpy as np
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_serializer, field_validator
 
-from parametric._field_eq_check import _is_equal_field
+from parametric._field_eq_check import is_equal_field
 from parametric._validate import _validate_immutable_annotation_and_coerce_np
 
 
@@ -62,7 +62,7 @@ class BaseParams(BaseModel):
         for field_name in default_params.model_fields:
             default_value = getattr(default_params, field_name)
             current_value = getattr(self, field_name)
-            if not _is_equal_field(default_value, current_value):
+            if not is_equal_field(default_value, current_value):
                 changed[field_name] = current_value
         return changed
 
@@ -146,6 +146,6 @@ class BaseParams(BaseModel):
         for field_name in self.model_fields:
             if field_name not in other.model_fields:
                 return False
-            if not _is_equal_field(getattr(self, field_name), getattr(other, field_name)):
+            if not is_equal_field(getattr(self, field_name), getattr(other, field_name)):
                 return False
         return True

@@ -4,7 +4,7 @@ from typing import Any
 import numpy as np
 
 
-def _is_equal_field(val1: Any, val2: Any) -> bool:
+def is_equal_field(val1: Any, val2: Any) -> bool:
     # for enums
     if isinstance(val1, enum.Enum) and isinstance(val2, enum.Enum):
         return val1.value == val2.value
