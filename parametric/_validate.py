@@ -60,14 +60,14 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
         )
     if outer_type is np.ndarray:
         if len(inner_types) != 1:
-            raise ValueError(f"Type of 'np.ndarray' {name} should have exactly 1 inner args (e.g. np.ndarray[int])")
+            raise ValueError(f"dtype of 'np.ndarray' {name} should have exactly 1 inner args (e.g. np.ndarray[int])")
 
         arr_dtype = inner_types[0]
         _validate_immutable_annotation_and_coerce_np(name, arr_dtype, value)
         if arr_dtype is type(None):
-            raise ValueError(f"Type of 'np.ndarray' {name} cannot be NoneType")
+            raise ValueError(f"dtype of 'np.ndarray' {name} cannot be NoneType")
         if get_origin(arr_dtype) in {UnionType, tuple}:
-            raise ValueError(f"Type of 'np.ndarray' {name} cannot be Union or Tuple")
+            raise ValueError(f"dtype of 'np.ndarray' {name} cannot be Union or Tuple")
 
         arr = np.array(value, dtype=inner_types[0])
         arr.flags.writeable = False

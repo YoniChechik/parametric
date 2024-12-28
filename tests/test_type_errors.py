@@ -81,7 +81,7 @@ def test_error_np_ndarray_multiple_inner_arg():
 
     with pytest.raises(Exception) as exc_info:
         Test()
-    assert "Type of 'np.ndarray' array_param should have exactly 1 inner args (e.g. np.ndarray[int])" in str(
+    assert "dtype of 'np.ndarray' array_param should have exactly 1 inner args (e.g. np.ndarray[int])" in str(
         exc_info.value
     )
 

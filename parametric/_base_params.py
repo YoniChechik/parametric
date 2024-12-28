@@ -11,6 +11,7 @@ from parametric._field_eq_check import is_equal_field
 from parametric._validate import _validate_immutable_annotation_and_coerce_np
 
 
+# TODO need to find a way to save arrays compressed (msgpack?)
 class BaseParams(BaseModel):
     model_config = ConfigDict(
         # validate after each assignment
