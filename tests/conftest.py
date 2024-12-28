@@ -31,6 +31,8 @@ class StatusCode(Enum):
 class A(BaseParams):
     np01: np.ndarray[int] = np.array([1, 2, 3])
     np02: np.ndarray[int] = [1, 2, 3]
+    np03: np.ndarray[int] = [[1, 2, 3], [4, 5, 6]]
+    # TODO handle union of np.ndarray and None
     # np03: np.ndarray[float] | None = [[1, 2, 3], [4, 5, 6]]
 
     # For int

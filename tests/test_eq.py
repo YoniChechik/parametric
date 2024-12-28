@@ -1,7 +1,7 @@
 from parametric import BaseParams
 
 
-def test_error_base_params_instance_not_int():
+def test_equality_check():
     class Test(BaseParams):
         param: int = 5
 
@@ -17,7 +17,7 @@ def test_error_base_params_instance_not_int():
     other.override_from_dict({"param": 10})
     assert instance != other
 
-    # differnt BaseParams object
+    # different BaseParams object
     class Test2(BaseParams):
         param2: int = 10
 

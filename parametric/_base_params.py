@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +27,7 @@ class BaseParams(BaseModel):
     def __new__(cls, *args, **kwargs):
         if cls is BaseParams:
             raise TypeError(f"{cls.__name__} cannot be instantiated directly, only derive from")
-        return super().__new__(cls, *args, **kwargs)
+        return super().__new__(cls)
 
     @field_validator("*", mode="before")
     @classmethod
@@ -56,16 +55,6 @@ class BaseParams(BaseModel):
                 var.flags.writeable = not is_frozen
         self.model_config["frozen"] = is_frozen
 
-    def model_dump_non_defaults(self) -> dict[str, Any]:
-        changed = {}
-        default_params = self.__class__()
-        for field_name in default_params.model_fields:
-            default_value = getattr(default_params, field_name)
-            current_value = getattr(self, field_name)
-            if not is_equal_field(default_value, current_value):
-                changed[field_name] = current_value
-        return changed
-
     def override_from_yaml_file(self, yaml_path: Path | str) -> None:
         filepath = Path(yaml_path)
         if not filepath.is_file():
@@ -77,49 +66,6 @@ class BaseParams(BaseModel):
         if yaml_data is None:
             return
         self.override_from_dict(yaml_data)
-
-    def override_from_cli(self) -> None:
-        import argparse
-
-        # Initialize the parser
-        parser = argparse.ArgumentParser()
-
-        # Add arguments
-        for field_name, field_info in self.model_fields.items():
-            if isinstance(
-                field_info.annotation,
-                (type(int), type(float), type(bool), type(str), type(bytes), type(Path), type(None)),
-            ):
-                parser.add_argument(f"--{field_name}", type=field_info.annotation, required=False)
-
-        args = parser.parse_args()
-        changed_params = {k: v for k, v in vars(args).items() if parser.get_default(k) != v}
-
-        self.override_from_dict(changed_params)
-
-    def override_from_envs(self, env_prefix: str = "_param_") -> None:
-        # Build a dictionary mapping lowercase names to actual case-sensitive names
-        lower_to_actual_case = {}
-        for field_name in self.model_fields:
-            lower_name = field_name.lower()
-            if lower_name in lower_to_actual_case:
-                conflicting_name = lower_to_actual_case[lower_name]
-                raise RuntimeError(
-                    f"Parameter names '{field_name}' and '{conflicting_name}' conflict when considered in lowercase.",
-                )
-            lower_to_actual_case[lower_name] = field_name
-
-        changed_params = {}
-        for key, value in os.environ.items():
-            if not key.lower().startswith(env_prefix):
-                continue
-            param_key = key[len(env_prefix) :].lower()
-
-            if param_key in lower_to_actual_case:
-                actual_name = lower_to_actual_case[param_key]
-                changed_params[actual_name] = value
-
-        self.override_from_dict(changed_params)
 
     def save_yaml(self, save_path: str | Path) -> None:
         with open(save_path, "w") as file:
@@ -139,7 +85,17 @@ class BaseParams(BaseModel):
     def model_dump_serializable(self) -> dict[str, Any]:
         return json.loads(self.model_dump_json())
 
-    # ======== private methods =========
+    def model_dump_non_defaults(self) -> dict[str, Any]:
+        changed = {}
+        default_params = self.__class__()
+        for field_name in default_params.model_fields:
+            default_value = getattr(default_params, field_name)
+            current_value = getattr(self, field_name)
+            if not is_equal_field(default_value, current_value):
+                changed[field_name] = current_value
+        return changed
+
+    # ===== equality check
     def __eq__(self, other: "BaseParams") -> bool:
         if not isinstance(other, BaseParams):
             return False

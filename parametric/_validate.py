@@ -1,48 +1,50 @@
 import enum
 from collections import deque
 from pathlib import Path
-from types import GeneratorType, GenericAlias, UnionType
+from types import GeneratorType, UnionType
 from typing import Any, Literal, Tuple, Type, Union, get_origin
 
 import numpy as np
 from typing_extensions import get_args
 
 
-def _validate_immutable_annotation_and_coerce_np(name: str, type: Type, value: Any) -> None:
+def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, value: Any) -> None:
     # TODO Optional
-    if type == Any:
+    if annotation == Any:
         raise ValueError(f"Type `Any` is not allowed, cannot convert '{name}'")
 
-    if type is Ellipsis:
+    if annotation is Ellipsis:
         raise ValueError(
             f"Ellipsis (`...`) is only allowed in this type format `tuple(x, ...)`, cannot convert '{name}'"
         )
 
     # ==== basic types
-    if type in (int, float, bool, str, bytes, Path, type(None)):
+    if annotation in (int, float, bool, str, bytes, Path, type(None)):
         return
 
     # == enums
-    if isinstance(type, enum.EnumMeta):
+    if isinstance(annotation, enum.EnumMeta):
         return
 
     # ==== BaseParams
     # NOTE: This import is here to avoid circular imports
     from parametric import BaseParams
 
-    # NOTE in python 3.10 generic alias like list[int] can't be check with issubclass
-    if not isinstance(type, GenericAlias) and issubclass(type, BaseParams):
-        return
+    try:
+        if issubclass(annotation, BaseParams):
+            return
+    except Exception:
+        pass
 
     # ==== complex types
-    outer_type = get_origin(type)
-    inner_types = get_args(type)
+    outer_type = get_origin(annotation)
+    inner_types = get_args(annotation)
 
     # == numpy
-    if type is np.array or outer_type is np.array:
+    if annotation is np.array or outer_type is np.array:
         raise ValueError(f"Type of {name} cannot be 'np.array'. Try np.ndarray[int] instead")
 
-    if type is np.ndarray:
+    if annotation is np.ndarray:
         raise ValueError(
             f"Type of {name} cannot be 'np.ndarray' without specifying element types (e.g. np.ndarray[int])"
         )
@@ -55,7 +57,7 @@ def _validate_immutable_annotation_and_coerce_np(name: str, type: Type, value: A
         return arr
 
     # == union
-    if type is Union and outer_type is None:
+    if annotation is Union and outer_type is None:
         raise ValueError(f"Type of {name} cannot be 'Union' without specifying element types (e.g. Union[int, str])")
 
     # TODO support numpy
@@ -65,10 +67,10 @@ def _validate_immutable_annotation_and_coerce_np(name: str, type: Type, value: A
         return
 
     # == tuple
-    if type is tuple and outer_type is None:
+    if annotation is tuple and outer_type is None:
         raise ValueError(f"Type of {name} cannot be 'tuple' without specifying element types (e.g. tuple[int, str])")
 
-    if type is Tuple and len(inner_types) == 0:
+    if annotation is Tuple and len(inner_types) == 0:
         raise ValueError(f"Type of {name} cannot be 'Tuple' without specifying element types (e.g. Tuple[int, str])")
 
     if outer_type in {tuple, Tuple}:
