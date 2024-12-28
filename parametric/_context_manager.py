@@ -1,15 +1,17 @@
-class Override:
-    def __init__(self, params):
-        # NOTE import inside to avoid circular dependency
-        from parametric import BaseParams
+class IsFreeze:
+    res: bool = True
 
-        if not isinstance(params, BaseParams):
-            raise TypeError(f"Expected BaseParams instance, got {type(params)}")
-        self._params = params
+
+IS_FREEZE = IsFreeze()
+
+
+class Override:
+    def __init__(self):
+        pass
 
     def __enter__(self):
-        self._params._set_freeze(False)
+        IS_FREEZE.res = False
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._params._set_freeze(True)
+        IS_FREEZE.res = True

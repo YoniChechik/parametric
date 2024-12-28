@@ -2,14 +2,13 @@ import enum
 from collections import deque
 from pathlib import Path
 from types import GeneratorType, UnionType
-from typing import Any, Literal, Tuple, Type, Union, get_origin
+from typing import Any, Literal, Optional, Tuple, Type, Union, get_origin
 
 import numpy as np
 from typing_extensions import get_args
 
 
 def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, value: Any) -> None:
-    # TODO Optional
     if annotation == Any:
         raise ValueError(f"Type `Any` is not allowed, cannot convert '{name}'")
 
@@ -19,7 +18,7 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
         )
 
     # ==== basic types
-    if annotation in (int, float, bool, str, bytes, Path, type(None)):
+    if annotation in {int, float, bool, str, bytes, Path, type(None)}:
         return
 
     # == enums
@@ -40,6 +39,14 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
     outer_type = get_origin(annotation)
     inner_types = get_args(annotation)
 
+    # ===== old types are bad
+    if outer_type is Tuple or annotation is Tuple:
+        raise ValueError("Old Tuple[x,y,z] type is bad practice. Use tuple[x,y,z] instead.")
+    if outer_type is Union or annotation is Union:
+        raise ValueError("Old Union[x,y,z] type is bad practice. Use x | y | z instead.")
+    if outer_type is Optional or annotation is Optional:
+        raise ValueError("Old Optional[x] type is bad practice. Use x | None instead.")
+
     # == numpy
     if annotation is np.array or outer_type is np.array:
         raise ValueError(f"Type of {name} cannot be 'np.array'. Try np.ndarray[int] instead")
@@ -52,28 +59,58 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
         if len(inner_types) != 1:
             raise ValueError(f"Type of 'np.ndarray' {name} should have exactly 1 inner args (e.g. np.ndarray[int])")
 
+        arr_dtype = inner_types[0]
+        _validate_immutable_annotation_and_coerce_np(name, arr_dtype, value)
+        if arr_dtype is type(None):
+            raise ValueError(f"Type of 'np.ndarray' {name} cannot be NoneType")
+        if get_origin(arr_dtype) in {UnionType, tuple}:
+            raise ValueError(f"Type of 'np.ndarray' {name} cannot be Union or Tuple")
+
         arr = np.array(value, dtype=inner_types[0])
         arr.flags.writeable = False
         return arr
 
     # == union
-    if annotation is Union and outer_type is None:
-        raise ValueError(f"Type of {name} cannot be 'Union' without specifying element types (e.g. Union[int, str])")
-
-    # TODO support numpy
-    if outer_type in {Union, UnionType}:
+    if outer_type is UnionType:
+        res_to_return = None
         for arg in inner_types:
-            _validate_immutable_annotation_and_coerce_np(name, arg, value)
-        return
+            tmp_res = _validate_immutable_annotation_and_coerce_np(name, arg, value)
+            if res_to_return is None:
+                res_to_return = tmp_res
+
+        # type checks passed, now check for union of common types
+        is_basic_type_already_exist = False
+        is_np_exist = False
+        is_tuple_exist = False
+        for arg in inner_types:
+            outer_arg = get_origin(arg)
+            if outer_arg is np.ndarray:
+                is_np_exist = True
+                if is_tuple_exist:
+                    raise ValueError(
+                        "Union of numpy and tuple is bad practice since their serialization can be similar"
+                    )
+            if outer_arg is tuple:
+                is_tuple_exist = True
+                if is_np_exist:
+                    raise ValueError(
+                        "Union of numpy and tuple is bad practice since their serialization can be similar"
+                    )
+
+            if arg in {type(None), tuple}:
+                continue
+            if is_basic_type_already_exist:
+                raise ValueError(
+                    "Union of common types is bad practice. You can use None and tuple and ONE other type in unions"
+                )
+            is_basic_type_already_exist = True
+        return res_to_return
 
     # == tuple
     if annotation is tuple and outer_type is None:
         raise ValueError(f"Type of {name} cannot be 'tuple' without specifying element types (e.g. tuple[int, str])")
 
-    if annotation is Tuple and len(inner_types) == 0:
-        raise ValueError(f"Type of {name} cannot be 'Tuple' without specifying element types (e.g. Tuple[int, str])")
-
-    if outer_type in {tuple, Tuple}:
+    if outer_type is tuple:
         if not isinstance(value, (list, tuple, set, frozenset, GeneratorType, deque)):
             raise ValueError(f"In {name}, {type(value)} is not tuple compatible.")
 
@@ -107,5 +144,5 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
     # ==== Raise error if the type is not handled
     raise ValueError(
         f"Parameter '{name}' must be one of the following: a subclass of BaseParams, an immutable type (tuple, np.ndarray, "
-        f"Literal, Enum, int, float, bool, complex, str, bytes, pathlib.Path, NoneType), or a union of these types."
+        f"Literal, Enum, int, float, bool, str, bytes, pathlib.Path, NoneType), or a union of these types."
     )

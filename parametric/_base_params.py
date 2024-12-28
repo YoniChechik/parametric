@@ -6,6 +6,7 @@ import numpy as np
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_serializer, field_validator
 
+from parametric._context_manager import IS_FREEZE, Override
 from parametric._field_eq_check import is_equal_field
 from parametric._validate import _validate_immutable_annotation_and_coerce_np
 
@@ -40,20 +41,13 @@ class BaseParams(BaseModel):
         return res
 
     def override_from_dict(self, data: dict[str, Any]):
-        self._set_freeze(False)
-        for k, v in data.items():
-            # NOTE: this also validates
-            setattr(self, k, v)
-        self._set_freeze(True)
+        if not IS_FREEZE.res:
+            raise Exception("Do not use 'override_...' functionality inside 'Override' context manager")
 
-    def _set_freeze(self, is_frozen: bool):
-        for field_name in self.model_fields:
-            var = getattr(self, field_name)
-            if isinstance(var, BaseParams):
-                var._set_freeze(is_frozen)
-            elif isinstance(var, np.ndarray):
-                var.flags.writeable = not is_frozen
-        self.model_config["frozen"] = is_frozen
+        with Override():
+            for k, v in data.items():
+                # NOTE: this also validates
+                setattr(self, k, v)
 
     def override_from_yaml_file(self, yaml_path: Path | str) -> None:
         filepath = Path(yaml_path)
@@ -66,10 +60,6 @@ class BaseParams(BaseModel):
         if yaml_data is None:
             return
         self.override_from_dict(yaml_data)
-
-    def save_yaml(self, save_path: str | Path) -> None:
-        with open(save_path, "w") as file:
-            yaml.dump(self.model_dump_serializable(), file)
 
     # ==== serializing
     @field_serializer("*", when_used="json")
@@ -84,6 +74,10 @@ class BaseParams(BaseModel):
 
     def model_dump_serializable(self) -> dict[str, Any]:
         return json.loads(self.model_dump_json())
+
+    def save_yaml(self, save_path: str | Path) -> None:
+        with open(save_path, "w") as file:
+            yaml.dump(self.model_dump_serializable(), file)
 
     def model_dump_non_defaults(self) -> dict[str, Any]:
         changed = {}
@@ -105,3 +99,17 @@ class BaseParams(BaseModel):
             if not is_equal_field(getattr(self, field_name), getattr(other, field_name)):
                 return False
         return True
+
+    # ==== setter with freeze check
+    def __setattr__(self, name, value):
+        self._set_freeze(IS_FREEZE.res)
+        return super().__setattr__(name, value)
+
+    def _set_freeze(self, is_frozen: bool):
+        for field_name in self.model_fields:
+            var = getattr(self, field_name)
+            if isinstance(var, BaseParams):
+                var._set_freeze(is_frozen)
+            elif isinstance(var, np.ndarray):
+                var.flags.writeable = not is_frozen
+        self.model_config["frozen"] = is_frozen
