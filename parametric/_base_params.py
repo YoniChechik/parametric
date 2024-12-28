@@ -25,6 +25,7 @@ class BaseParams(BaseModel):
         arbitrary_types_allowed=True,
     )
 
+    # NOTE: args/kwargs are needed to make change on init work
     def __new__(cls, *args, **kwargs):
         if cls is BaseParams:
             raise TypeError(f"{cls.__name__} cannot be instantiated directly, only derive from")
@@ -48,6 +49,11 @@ class BaseParams(BaseModel):
             for k, v in data.items():
                 # NOTE: this also validates
                 setattr(self, k, v)
+
+    # ====== yaml
+    def save_yaml(self, save_path: str | Path) -> None:
+        with open(save_path, "w") as file:
+            yaml.dump(self.model_dump_serializable(), file)
 
     def override_from_yaml_file(self, yaml_path: Path | str) -> None:
         filepath = Path(yaml_path)
@@ -77,10 +83,6 @@ class BaseParams(BaseModel):
 
     def model_dump_serializable(self) -> dict[str, Any]:
         return json.loads(self.model_dump_json())
-
-    def save_yaml(self, save_path: str | Path) -> None:
-        with open(save_path, "w") as file:
-            yaml.dump(self.model_dump_serializable(), file)
 
     def model_dump_non_defaults(self) -> dict[str, Any]:
         changed = {}

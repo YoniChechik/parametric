@@ -130,6 +130,7 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
         for i, val_i in enumerate(value):
             curr_inner_type = inner_types[0] if is_end_with_elipsis else inner_types[i]
             arg_res = _validate_immutable_annotation_and_coerce_np(name, curr_inner_type, val_i)
+
             if arg_res is not None:
                 res.append(arg_res)
                 is_np_inside = True
