@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 import pytest
@@ -93,3 +93,26 @@ def test_error_Any_type():
     with pytest.raises(Exception) as exc_info:
         Test()
     assert "Type `Any` is not allowed, cannot convert 'array_param'" in str(exc_info.value)
+
+
+def test_old_types_error():
+    class Test(BaseParams):
+        array_param: Tuple[int, int] = (1, 2)
+
+    with pytest.raises(Exception) as exc_info:
+        Test()
+    assert "Old Tuple[x,y,z] type is bad practice. Use tuple[x,y,z] instead." in str(exc_info.value)
+
+    class Test2(BaseParams):
+        array_param: Union[int, float] = 1
+
+    with pytest.raises(Exception) as exc_info:
+        Test2()
+    assert "Old Union[x,y,z] type is bad practice. Use x | y | z instead." in str(exc_info.value)
+
+    class Test3(BaseParams):
+        array_param: Optional[int] = 1
+
+    with pytest.raises(Exception) as exc_info:
+        Test3()
+    assert "Old Optional[x] type is bad practice. Use x | None instead." in str(exc_info.value)

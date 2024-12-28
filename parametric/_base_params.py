@@ -70,6 +70,9 @@ class BaseParams(BaseModel):
         # === numpy to list
         if isinstance(value, np.ndarray):
             return value.tolist()
+        # === tuple to list (recursively)
+        if isinstance(value, tuple):
+            return [self._serialize_helper(item) for item in value]
         return value
 
     def model_dump_serializable(self) -> dict[str, Any]:

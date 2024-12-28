@@ -32,7 +32,7 @@ class A(BaseParams):
     np01: np.ndarray[int] = np.array([1, 2, 3])
     np02: np.ndarray[int] = [1, 2, 3]
     np03: np.ndarray[int] = [[1, 2, 3], [4, 5, 6]]
-    np03: np.ndarray[int] | None = [[1, 2, 3], [4, 5, 6]]
+    np04: np.ndarray[int] | None = [[1, 2, 3], [4, 5, 6]]
 
     # For int
     i01: int = 1
@@ -72,12 +72,7 @@ class A(BaseParams):
     t03: tuple[tuple[int, str], tuple[float, str]] = ((1, "a"), (3.14, "b"))
     t04: tuple[int, int, int] | None = (1, 2, 3)
     t05: tuple[str, ...] = ("key1", "key2")
-
-    # old types
-    # o01: Tuple[Tuple[int, str], Tuple[float, str]] = ((1, "a"), (3.14, "b"))
-    # o02: Optional[Tuple[int, int, int]] = (1, 2, 3)
-    # o03: Union[int, float] = 42
-    # o04: Tuple[Union[int, str], ...] = ("key1", 1)
+    t06: tuple[np.ndarray[int], Path] = ([[1, 2, 3], [4, 5, 6]], "/x/y")
 
     # enums
     e01: Color = Color.RED

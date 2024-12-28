@@ -2,7 +2,7 @@ import enum
 from collections import deque
 from pathlib import Path
 from types import GeneratorType, UnionType
-from typing import Any, Literal, Optional, Tuple, Type, Union, get_origin
+from typing import Any, Literal, Type, Union, get_origin
 
 import numpy as np
 from typing_extensions import get_args
@@ -40,12 +40,15 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
     inner_types = get_args(annotation)
 
     # ===== old types are bad
-    if outer_type is Tuple or annotation is Tuple:
-        raise ValueError("Old Tuple[x,y,z] type is bad practice. Use tuple[x,y,z] instead.")
+    try:
+        if annotation._name == "Tuple":
+            raise ValueError("Old Tuple[x,y,z] type is bad practice. Use tuple[x,y,z] instead.")
+        if annotation._name == "Optional":
+            raise ValueError("Old Optional[x] type is bad practice. Use x | None instead.")
+    except AttributeError:
+        pass
     if outer_type is Union or annotation is Union:
         raise ValueError("Old Union[x,y,z] type is bad practice. Use x | y | z instead.")
-    if outer_type is Optional or annotation is Optional:
-        raise ValueError("Old Optional[x] type is bad practice. Use x | None instead.")
 
     # == numpy
     if annotation is np.array or outer_type is np.array:
