@@ -1,9 +1,13 @@
-from parametric._base_params import BaseParams
+from parametric import BaseParams
 
 
-def test_error_base_params_instance_not_int():
-    class Test(BaseParams):
+def test_equality_check():
+    class Nested(BaseParams):
         param: int = 5
+
+    class Test(BaseParams):
+        param2: int = 5
+        nested: Nested = Nested(param=6)
 
     instance = Test()
 
@@ -14,10 +18,10 @@ def test_error_base_params_instance_not_int():
     other = Test()
     assert instance == other
 
-    other.override_from_dict({"param": 10})
+    other.override_from_dict({"param2": 10})
     assert instance != other
 
-    # differnt BaseParams object
+    # different BaseParams object
     class Test2(BaseParams):
         param2: int = 10
 
