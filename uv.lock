@@ -246,7 +246,7 @@ dev = [
 requires-dist = [
     { name = "msgpack" },
     { name = "numpy" },
-    { name = "pydantic", specifier = ">=2.10.4" },
+    { name = "pydantic", specifier = ">=2" },
     { name = "pyyaml" },
 ]
 
