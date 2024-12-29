@@ -1,3 +1,9 @@
+## [0.10.0] - 2024-12-29
+
+- numpy + pydantic (#87)
+- better errors
+- Add tests for handling frozen numpy arrays in BaseParams
+
 ## [0.9.0] - 2024-12-03
 
 - Use 'uv run' to execute the release update script
