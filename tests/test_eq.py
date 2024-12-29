@@ -2,8 +2,12 @@ from parametric import BaseParams
 
 
 def test_equality_check():
-    class Test(BaseParams):
+    class Nested(BaseParams):
         param: int = 5
+
+    class Test(BaseParams):
+        param2: int = 5
+        nested: Nested = Nested(param=6)
 
     instance = Test()
 
@@ -14,7 +18,7 @@ def test_equality_check():
     other = Test()
     assert instance == other
 
-    other.override_from_dict({"param": 10})
+    other.override_from_dict({"param2": 10})
     assert instance != other
 
     # different BaseParams object

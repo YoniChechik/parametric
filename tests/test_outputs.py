@@ -42,3 +42,16 @@ def test_model_dump_non_defaults(params: MyParams):
     assert params.f04 == 0.001
 
     assert params.model_dump_non_defaults() == {"f04": 0.001}
+
+
+def test_msgpack(params: MyParams):
+    with NamedTemporaryFile("wb", delete=False, suffix=".msgpack") as tmp_msgpack:
+        tmp_msgpack_name = tmp_msgpack.name
+        params.save_msgpack(tmp_msgpack_name)
+
+    # Reload params and ensure equality
+    params2 = MyParams()
+    params2.override_from_msgpack_file(tmp_msgpack_name)
+
+    os.remove(tmp_msgpack_name)
+    assert params == params2
