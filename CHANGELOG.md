@@ -1,3 +1,7 @@
+## [0.11.0] - 2024-12-31
+
+- load_from cls functionality for msgpack and yaml + more test coverage (#89)
+
 ## [0.10.0] - 2024-12-29
 
 - numpy + pydantic (#87)
