@@ -45,6 +45,9 @@ jobs:
         run: |
           new_version=$(uv run .github/workflows/manual_release_pr_update_files.py ${{ github.event.inputs.release_type }})
           echo "new_version=${new_version}" >> $GITHUB_OUTPUT
+        
+      - name: update lockfile with new version
+        run: uv sync
 
       # ===== test the package
       # - name: Build package
