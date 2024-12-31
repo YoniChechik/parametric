@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import msgpack
 import numpy as np
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_serializer, field_validator
@@ -43,13 +44,17 @@ class BaseParams(BaseModel):
         return res
 
     def override_from_dict(self, data: dict[str, Any]):
+        # already in override() context:
         if not IS_FREEZE.res:
-            raise Exception("Do not use 'override_...' functionality inside 'Override' context manager")
+            self._override_for_loop(data)
+        else:
+            with Override():
+                self._override_for_loop(data)
 
-        with Override():
-            for k, v in data.items():
-                # NOTE: this also validates
-                setattr(self, k, v)
+    def _override_for_loop(self, data):
+        for k, v in data.items():
+            # NOTE: this also validates
+            setattr(self, k, v)
 
     # ==== serializing
     @field_serializer("*", when_used="json")
@@ -98,38 +103,38 @@ class BaseParams(BaseModel):
 
     # ====== msgpack
     def save_msgpack(self, save_path: str | Path) -> None:
-        import msgpack
-
         with open(save_path, "wb") as file:
             file.write(msgpack.packb(self.model_dump_serializable()))
 
-    def override_from_msgpack_file(self, msgpack_path: Path | str) -> None:
-        import msgpack
-
-        filepath = Path(msgpack_path)
-        if not filepath.is_file():
-            return
+    def override_from_msgpack_path(self, msgpack_path: Path | str) -> None:
+        _validate_filepath(msgpack_path)
 
         with open(msgpack_path, "rb") as file:
             msgpack_data = msgpack.unpackb(file.read())
         self.override_from_dict(msgpack_data)
+
+    @classmethod
+    def load_from_msgpack_path(cls, msgpack_path: Path | str):
+        _validate_filepath(msgpack_path)
+
+        with open(msgpack_path, "rb") as file:
+            msgpack_data = msgpack.unpackb(file.read())
+        return cls(**msgpack_data)
 
     # ====== yaml
     def save_yaml(self, save_path: str | Path) -> None:
         with open(save_path, "w") as file:
             yaml.dump(self.model_dump_serializable(), file)
 
-    def override_from_yaml_file(self, yaml_path: Path | str) -> None:
-        filepath = Path(yaml_path)
-        if not filepath.is_file():
-            return
-
-        with open(yaml_path, "r") as file:
-            yaml_data = yaml.safe_load(file)
-        # None returns if file is empty
-        if yaml_data is None:
-            return
+    def override_from_yaml_path(self, yaml_path: Path | str) -> None:
+        yaml_data = _open_yaml_file(yaml_path)
         self.override_from_dict(yaml_data)
+
+    @classmethod
+    def load_from_yaml_path(cls, yaml_path: Path | str):
+        yaml_data = _open_yaml_file(yaml_path)
+
+        return cls(**yaml_data)
 
     # ===== equality check
     def __eq__(self, other: "BaseParams") -> bool:
@@ -155,3 +160,21 @@ class BaseParams(BaseModel):
             elif isinstance(var, np.ndarray):
                 var.flags.writeable = not is_frozen
         self.model_config["frozen"] = is_frozen
+
+
+def _open_yaml_file(yaml_path: Path | str) -> dict[str, Any]:
+    _validate_filepath(yaml_path)
+
+    with open(yaml_path, "r") as file:
+        yaml_data = yaml.safe_load(file)
+    # None returns if file is empty
+    if yaml_data is None:
+        yaml_data = {}
+    return yaml_data
+
+
+def _validate_filepath(filepath: Path | str) -> Path:
+    filepath = Path(filepath)
+    if not filepath.is_file():
+        raise FileNotFoundError(f"No such file: '{filepath}'")
+    return filepath

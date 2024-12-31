@@ -39,6 +39,15 @@ def test_error_mutable_field():
     assert "Parameter 'list_param' must be one of the following" in str(exc_info.value)
 
 
+def test_error_ellipsis():
+    class Test(BaseParams):
+        x: ... = 1
+
+    with pytest.raises(Exception) as exc_info:
+        Test()
+    assert "Ellipsis (`...`) is only allowed in this type format `tuple(x" in str(exc_info.value)
+
+
 def test_error_tuple_no_inner_args():
     class Test(BaseParams):
         t: tuple = (1, 2, 3)

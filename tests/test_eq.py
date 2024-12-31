@@ -11,19 +11,26 @@ def test_equality_check():
 
     instance = Test()
 
-    # other is not BaseParams instance
+    # ===== other is not BaseParams instance
     assert instance != 5
 
-    # copy of instance but with different value
+    # ===== copy of instance but with different value
     other = Test()
     assert instance == other
 
     other.override_from_dict({"param2": 10})
     assert instance != other
 
-    # different BaseParams object
+    # ======= different baseParams with same key name
     class Test2(BaseParams):
         param2: int = 10
 
     other = Test2()
+    assert instance != other
+
+    # ======= different baseParams with different key name
+    class Test3(BaseParams):
+        param3: int = 5
+
+    other = Test3()
     assert instance != other
