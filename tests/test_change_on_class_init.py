@@ -1,4 +1,4 @@
-from parametric._base_params import BaseParams
+from parametric import BaseParams
 from tests.conftest import MyParams
 
 
