@@ -69,7 +69,7 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
         if get_origin(arr_dtype) in {UnionType, tuple}:
             raise ValueError(f"dtype of 'np.ndarray' {name} cannot be Union or Tuple")
 
-        arr = np.array(value, dtype=inner_types[0])
+        arr = np.asarray(value, dtype=inner_types[0])
         arr.flags.writeable = False
         return arr
 
