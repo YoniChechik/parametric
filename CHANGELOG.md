@@ -1,3 +1,7 @@
+## [0.11.1] - 2025-01-19
+
+- don't copy np array if you don't have to
+
 ## [0.11.0] - 2024-12-31
 
 - load_from cls functionality for msgpack and yaml + more test coverage (#89)
