@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +9,7 @@ from pydantic_core import PydanticUndefined
 
 from parametric._context_manager import IS_FREEZE, Override
 from parametric._field_eq_check import is_equal_field
+from parametric._serializers import decode_custom, encode_custom
 from parametric._validate import _validate_immutable_annotation_and_coerce_np
 
 
@@ -51,32 +51,32 @@ class BaseParams(BaseModel):
             with Override():
                 self._override_for_loop(data)
 
-    def _override_for_loop(self, data):
+    def _override_for_loop(self, data: dict[str, Any]):
         for k, v in data.items():
             # NOTE: this also validates
             setattr(self, k, v)
 
     # ==== serializing
     @field_serializer("*", when_used="json")
-    def _serialize_helper(self, value: Any) -> Any:
+    def _json_serialize_helper(self, value: Any) -> Any:
         # === path to str
         if isinstance(value, Path):
             return str(value.as_posix())
         # === numpy to list
         if isinstance(value, np.ndarray):
             return value.tolist()
-        # === tuple to list (recursively)
+        # === tuple (recursively)
         if isinstance(value, tuple):
-            return [self._serialize_helper(item) for item in value]
+            return tuple(self._json_serialize_helper(item) for item in value)
         return value
 
     def model_dump_serializable(self) -> dict[str, Any]:
-        return json.loads(self.model_dump_json())
+        return self.model_dump(mode="json")
 
     def model_dump_non_defaults(self) -> dict[str, Any]:
         changed = {}
 
-        # NOTE: first we must find all undefined and overrid them in the default params instance
+        # NOTE: first we must find all undefined and override them in the default params instance
         undefined_override_dict = {}
         for field_name, field_info in self.model_fields.items():
             default_value_not_validated = field_info.get_default()
@@ -103,22 +103,17 @@ class BaseParams(BaseModel):
 
     # ====== msgpack
     def save_msgpack(self, save_path: str | Path) -> None:
+        dict_res = self.model_dump()
         with open(save_path, "wb") as file:
-            file.write(msgpack.packb(self.model_dump_serializable()))
+            file.write(msgpack.packb(dict_res, default=encode_custom))
 
     def override_from_msgpack_path(self, msgpack_path: Path | str) -> None:
-        _validate_filepath(msgpack_path)
-
-        with open(msgpack_path, "rb") as file:
-            msgpack_data = msgpack.unpackb(file.read())
+        msgpack_data = _load_from_msgpack_path(msgpack_path)
         self.override_from_dict(msgpack_data)
 
     @classmethod
     def load_from_msgpack_path(cls, msgpack_path: Path | str):
-        _validate_filepath(msgpack_path)
-
-        with open(msgpack_path, "rb") as file:
-            msgpack_data = msgpack.unpackb(file.read())
+        msgpack_data = _load_from_msgpack_path(msgpack_path)
         return cls(**msgpack_data)
 
     # ====== yaml
@@ -149,17 +144,15 @@ class BaseParams(BaseModel):
 
     # ==== setter with freeze check
     def __setattr__(self, name, value):
-        self._set_freeze(IS_FREEZE.res)
-        return super().__setattr__(name, value)
+        if IS_FREEZE.res:
+            raise AttributeError("Instance is frozen")
+        self.model_config["frozen"] = False
+        try:
+            res = super().__setattr__(name, value)
+        finally:
+            self.model_config["frozen"] = True
 
-    def _set_freeze(self, is_frozen: bool):
-        for field_name in self.model_fields:
-            var = getattr(self, field_name)
-            if isinstance(var, BaseParams):
-                var._set_freeze(is_frozen)
-            elif isinstance(var, np.ndarray):
-                var.flags.writeable = not is_frozen
-        self.model_config["frozen"] = is_frozen
+        return res
 
 
 def _open_yaml_file(yaml_path: Path | str) -> dict[str, Any]:
@@ -178,3 +171,11 @@ def _validate_filepath(filepath: Path | str) -> Path:
     if not filepath.is_file():
         raise FileNotFoundError(f"No such file: '{filepath}'")
     return filepath
+
+
+def _load_from_msgpack_path(msgpack_path: Path | str):
+    _validate_filepath(msgpack_path)
+
+    with open(msgpack_path, "rb") as file:
+        msgpack_data = msgpack.unpackb(file.read(), object_hook=decode_custom)
+    return msgpack_data
