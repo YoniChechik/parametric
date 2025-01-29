@@ -1,3 +1,7 @@
+## [0.12.0] - 2025-01-29
+
+- faster serialization
+
 ## [0.11.1] - 2025-01-19
 
 - don't copy np array if you don't have to
