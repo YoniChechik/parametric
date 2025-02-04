@@ -1,5 +1,4 @@
 import pathlib
-import struct
 import time
 from typing import Type, TypeVar
 
@@ -16,70 +15,22 @@ T = TypeVar("T", bound="MsgpackModel")
 # Custom hooks for MessagePack
 # ------------------------------------------------------------------------------
 
-# Choose an arbitrary extension type code (must be between 0 and 127)
-NDARRAY_EXT_CODE = 42
-
 
 def msgpack_enc_hook(obj: object) -> object:
-    """
-    MessagePack encoder hook that handles:
-      - np.ndarray: Encodes as an extension with a binary header.
-      - pathlib.Path: Encoded as a POSIX string.
-
-    For np.ndarray, the header is structured as:
-        [4-byte unsigned int: length of dtype string]
-        [dtype string in ASCII]
-        [4-byte unsigned int: number of dimensions]
-        [for each dimension: 4-byte unsigned int]
-    followed by the raw array bytes.
-    """
     if isinstance(obj, np.ndarray):
-        dtype_bytes = obj.dtype.str.encode("ascii")
-        shape = obj.shape
-        header = struct.pack("!I", len(dtype_bytes)) + dtype_bytes
-        header += struct.pack("!I", len(shape)) + struct.pack(f"!{len(shape)}I", *shape)
-        payload = header + obj.reshape(-1).tobytes()  # Flatten to avoid unnecessary reshaping
-        return msgspec.msgpack.Ext(NDARRAY_EXT_CODE, payload)
+        # obj.data is memoryview
+        return [obj.data, str(obj.dtype), obj.shape]
     elif isinstance(obj, pathlib.Path):
         return obj.as_posix()
     raise NotImplementedError(f"Object of type {type(obj)} is not supported in {msgpack_enc_hook.__name__}")
 
 
 def msgpack_dec_hook(expected_type: Type, obj: object) -> object:
-    """
-    Additional MessagePack decoder hook that handles:
-    If a field is expected to be a pathlib.Path and the value is a string,
-    convert it using pathlib.Path.
-    """
     if expected_type is pathlib.Path:
         return pathlib.Path(obj)
+    elif expected_type is np.ndarray:
+        return np.frombuffer(obj[0], dtype=obj[1]).reshape(obj[2])
     return obj
-
-
-def msgpack_dec_ext_hook(code: int, data: memoryview) -> object:
-    """
-    Optimized MessagePack extension hook for deserializing a numpy array.
-    """
-    if code == NDARRAY_EXT_CODE:
-        offset = 0
-        # Read dtype length and dtype string
-        dtype_len = struct.unpack_from("!I", data, offset)[0]
-        offset += 4
-        dtype_str = data[offset : offset + dtype_len].tobytes().decode("ascii")
-        offset += dtype_len
-        # Read the number of dimensions
-        ndim = struct.unpack_from("!I", data, offset)[0]
-        offset += 4
-        shape = struct.unpack_from(f"!{ndim}I", data, offset)
-        offset += ndim * 4
-        # Compute expected byte size
-        dt = np.dtype(dtype_str)
-        expected_size = int(np.prod(shape)) * dt.itemsize
-        # Extract only the required number of bytes
-        raw_bytes = memoryview(data[offset : offset + expected_size])
-        arr = np.frombuffer(raw_bytes, dtype=dt).reshape(shape)
-        return arr
-    raise NotImplementedError(f"Extension type code {code} is not supported in {msgpack_dec_ext_hook.__name__}")
 
 
 # ------------------------------------------------------------------------------
@@ -123,7 +74,7 @@ def serialization_dec_hook(expected_type: Type, obj: object) -> object:
 class MsgpackModel(msgspec.Struct):
     """
     Abstract base class for models that support serialization/deserialization
-    via MessagePack, JSON, dict, YAML, and TOML. It has built-in support for:
+    via MessagePack, JSON, YAML, and TOML. It has built-in support for:
       - np.ndarray (using binary extension in MessagePack; list conversion in JSON)
       - pathlib.Path (encoded as POSIX strings)
 
@@ -144,22 +95,21 @@ class MsgpackModel(msgspec.Struct):
         encoder = msgspec.msgpack.Encoder(enc_hook=msgpack_enc_hook)
         return encoder.encode(self)
 
+    def to_msgpack_path(self, path: pathlib.Path | str) -> None:
+        """
+        Serialize the instance to MessagePack bytes and save to a file.
+        """
+
+        with open(path, "wb") as f:
+            f.write(self.to_msgpack())
+
     @classmethod
     def from_msgpack(cls: Type[T], data: Buffer) -> T:
         """
         Deserialize MessagePack bytes into an instance of the calling class.
         """
-        decoder = msgspec.msgpack.Decoder(cls, ext_hook=msgpack_dec_ext_hook, dec_hook=msgpack_dec_hook)
+        decoder = msgspec.msgpack.Decoder(cls, dec_hook=msgpack_dec_hook)
         return decoder.decode(data)
-
-    def to_msgpack_path(self, path: pathlib.Path | str) -> None:
-        """
-        Serialize the instance to MessagePack bytes and save to a file.
-        """
-        # TODO use  this to write to file efficient       encoder = msgspec.msgpack.Encoder(enc_hook=msgpack_enc_hook); encoder.encode_into(self,buffer,offset)
-
-        with open(path, "wb") as f:
-            f.write(self.to_msgpack())
 
     @classmethod
     def from_msgpack_path(cls: Type[T], path: pathlib.Path | str) -> T:
@@ -167,6 +117,7 @@ class MsgpackModel(msgspec.Struct):
         Deserialize MessagePack bytes from a file into an instance of the calling class
         without unnecessary copies.
         """
+
         with open(path, "rb") as f:
             data = f.read()
         return cls.from_msgpack(data)
@@ -388,20 +339,20 @@ if __name__ == "__main__":
     print("All tests passed successfully!")
 
     # Create a random 1000x1000 numpy array of floats
-    random_array = np.random.rand(10000, 10000)
+    random_array = np.random.rand(20000, 20000)
 
     # Time saving and loading using numpy's save and load
     np_save_path = "random_array.npy"
     start_time = time.time()
     np.save(np_save_path, random_array)
     np_save_duration = time.time() - start_time
+    print(f"NumPy save duration: {np_save_duration:.6f} seconds")
 
     start_time = time.time()
     loaded_array_np = np.load(np_save_path)
     np_load_duration = time.time() - start_time
 
     assert np.array_equal(random_array, loaded_array_np)
-    print(f"NumPy save duration: {np_save_duration:.6f} seconds")
     print(f"NumPy load duration: {np_load_duration:.6f} seconds")
 
     # Define a model with a single field for the numpy array
@@ -414,11 +365,11 @@ if __name__ == "__main__":
     start_time = time.time()
     model_bytes = model_instance.to_msgpack_path("random_array.msgpack")
     model_save_duration = time.time() - start_time
+    print(f"Model save duration: {model_save_duration:.6f} seconds")
 
     start_time = time.time()
     loaded_model_instance = ArrayModel.from_msgpack_path("random_array.msgpack")
     model_load_duration = time.time() - start_time
 
     assert np.array_equal(random_array, loaded_model_instance.array)
-    print(f"Model save duration: {model_save_duration:.6f} seconds")
     print(f"Model load duration: {model_load_duration:.6f} seconds")
