@@ -24,6 +24,7 @@ dependencies = [
     "pydantic>=2",
     "pyyaml",
     "toml>=0.10.2",
+    "tomli-w>=1.2.0",
 ]
 
 classifiers = [

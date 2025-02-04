@@ -1,13 +1,13 @@
-import json
 import pathlib
+import struct
+import time
 from typing import Type, TypeVar
 
 import msgspec
 import msgspec.json
 import msgspec.msgpack
 import numpy as np
-import toml
-import yaml
+from typing_extensions import Buffer
 
 # Type variable for return type hints
 T = TypeVar("T", bound="MsgpackModel")
@@ -23,12 +23,22 @@ NDARRAY_EXT_CODE = 42
 def msgpack_enc_hook(obj: object) -> object:
     """
     MessagePack encoder hook that handles:
-      - np.ndarray: Encoded as an extension containing (dtype_str, shape, raw_bytes)
+      - np.ndarray: Encodes as an extension with a binary header.
       - pathlib.Path: Encoded as a POSIX string.
+
+    For np.ndarray, the header is structured as:
+        [4-byte unsigned int: length of dtype string]
+        [dtype string in ASCII]
+        [4-byte unsigned int: number of dimensions]
+        [for each dimension: 4-byte unsigned int]
+    followed by the raw array bytes.
     """
     if isinstance(obj, np.ndarray):
-        dtype_str = obj.dtype.str
-        payload = msgspec.msgpack.encode((dtype_str, obj.shape, obj.tobytes()))
+        dtype_bytes = obj.dtype.str.encode("ascii")
+        shape = obj.shape
+        header = struct.pack("!I", len(dtype_bytes)) + dtype_bytes
+        header += struct.pack("!I", len(shape)) + struct.pack(f"!{len(shape)}I", *shape)
+        payload = header + obj.reshape(-1).tobytes()  # Flatten to avoid unnecessary reshaping
         return msgspec.msgpack.Ext(NDARRAY_EXT_CODE, payload)
     elif isinstance(obj, pathlib.Path):
         return obj.as_posix()
@@ -48,17 +58,32 @@ def msgpack_dec_hook(expected_type: Type, obj: object) -> object:
 
 def msgpack_dec_ext_hook(code: int, data: memoryview) -> object:
     """
-    MessagePack extension hook to reconstitute a numpy array.
+    Optimized MessagePack extension hook for deserializing a numpy array.
     """
     if code == NDARRAY_EXT_CODE:
-        dtype_str, shape, raw_bytes = msgspec.msgpack.decode(data)
-        arr = np.frombuffer(raw_bytes, dtype=np.dtype(dtype_str))
-        return arr.reshape(shape)
+        offset = 0
+        # Read dtype length and dtype string
+        dtype_len = struct.unpack_from("!I", data, offset)[0]
+        offset += 4
+        dtype_str = data[offset : offset + dtype_len].tobytes().decode("ascii")
+        offset += dtype_len
+        # Read the number of dimensions
+        ndim = struct.unpack_from("!I", data, offset)[0]
+        offset += 4
+        shape = struct.unpack_from(f"!{ndim}I", data, offset)
+        offset += ndim * 4
+        # Compute expected byte size
+        dt = np.dtype(dtype_str)
+        expected_size = int(np.prod(shape)) * dt.itemsize
+        # Extract only the required number of bytes
+        raw_bytes = memoryview(data[offset : offset + expected_size])
+        arr = np.frombuffer(raw_bytes, dtype=dt).reshape(shape)
+        return arr
     raise NotImplementedError(f"Extension type code {code} is not supported in {msgpack_dec_ext_hook.__name__}")
 
 
 # ------------------------------------------------------------------------------
-# Custom hooks for serialization
+# Custom hooks for serialization (JSON, etc.)
 # ------------------------------------------------------------------------------
 
 
@@ -83,9 +108,9 @@ def serialization_dec_hook(expected_type: Type, obj: object) -> object:
       - pathlib.Path: If a string is encountered and pathlib.Path is expected,
                       convert it with pathlib.Path().
     """
-    if expected_type is np.ndarray and isinstance(obj, list):
-        return np.array(obj)
-    if expected_type is pathlib.Path and isinstance(obj, str):
+    if expected_type is np.ndarray:
+        return np.asarray(obj)
+    if expected_type is pathlib.Path:
         return pathlib.Path(obj)
     return obj
 
@@ -120,12 +145,31 @@ class MsgpackModel(msgspec.Struct):
         return encoder.encode(self)
 
     @classmethod
-    def from_msgpack(cls: Type[T], data: bytes) -> T:
+    def from_msgpack(cls: Type[T], data: Buffer) -> T:
         """
         Deserialize MessagePack bytes into an instance of the calling class.
         """
         decoder = msgspec.msgpack.Decoder(cls, ext_hook=msgpack_dec_ext_hook, dec_hook=msgpack_dec_hook)
         return decoder.decode(data)
+
+    def to_msgpack_path(self, path: pathlib.Path | str) -> None:
+        """
+        Serialize the instance to MessagePack bytes and save to a file.
+        """
+        # TODO use  this to write to file efficient       encoder = msgspec.msgpack.Encoder(enc_hook=msgpack_enc_hook); encoder.encode_into(self,buffer,offset)
+
+        with open(path, "wb") as f:
+            f.write(self.to_msgpack())
+
+    @classmethod
+    def from_msgpack_path(cls: Type[T], path: pathlib.Path | str) -> T:
+        """
+        Deserialize MessagePack bytes from a file into an instance of the calling class
+        without unnecessary copies.
+        """
+        with open(path, "rb") as f:
+            data = f.read()
+        return cls.from_msgpack(data)
 
     # -- JSON serialization --
 
@@ -133,8 +177,7 @@ class MsgpackModel(msgspec.Struct):
         """
         Serialize the instance to a JSON string using custom hooks.
         """
-        json_bytes = msgspec.json.encode(self, enc_hook=serialization_enc_hook)
-        return json_bytes.decode("utf-8")
+        return msgspec.json.encode(self, enc_hook=serialization_enc_hook).decode("utf-8")
 
     @classmethod
     def from_json(cls: Type[T], json_str: str) -> T:
@@ -143,21 +186,20 @@ class MsgpackModel(msgspec.Struct):
         """
         return msgspec.json.decode(json_str.encode("utf-8"), type=cls, dec_hook=serialization_dec_hook)
 
-    # -- Dict conversion (via JSON round-trip) --
-
-    def to_dict(self) -> dict:
+    def to_json_path(self, path: pathlib.Path | str) -> None:
         """
-        Convert the instance to a dict (using a JSON round-trip).
+        Serialize the instance to a JSON string and save to a file.
         """
-        json_bytes = msgspec.json.encode(self, enc_hook=serialization_enc_hook)
-        return msgspec.json.decode(json_bytes)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(self.to_json())
 
     @classmethod
-    def from_dict(cls: Type[T], d: dict) -> T:
+    def from_json_path(cls: Type[T], path: pathlib.Path | str) -> T:
         """
-        Instantiate an instance from a dict (via JSON round-trip).
+        Deserialize a JSON string from a file into an instance of the calling class.
         """
-        json_str = json.dumps(d)
+        with open(path, "r", encoding="utf-8") as f:
+            json_str = f.read()
         return cls.from_json(json_str)
 
     # -- YAML serialization (using dict conversion) --
@@ -166,16 +208,31 @@ class MsgpackModel(msgspec.Struct):
         """
         Serialize the instance to a YAML string.
         """
-        d = self.to_dict()
-        return yaml.safe_dump(d)
+        return msgspec.yaml.encode(self, enc_hook=serialization_enc_hook).decode("utf-8")
 
     @classmethod
     def from_yaml(cls: Type[T], yaml_str: str) -> T:
         """
         Deserialize a YAML string into an instance of the calling class.
         """
-        d = yaml.safe_load(yaml_str)
-        return cls.from_dict(d)
+
+        return msgspec.yaml.decode(yaml_str.encode("utf-8"), type=cls, dec_hook=serialization_dec_hook)
+
+    def to_yaml_path(self, path: pathlib.Path | str) -> None:
+        """
+        Serialize the instance to a YAML string and save to a file.
+        """
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(self.to_yaml())
+
+    @classmethod
+    def from_yaml_path(cls: Type[T], path: pathlib.Path | str) -> T:
+        """
+        Deserialize a YAML string from a file into an instance of the calling class.
+        """
+        with open(path, "r", encoding="utf-8") as f:
+            yaml_str = f.read()
+        return cls.from_yaml(yaml_str)
 
     # -- TOML serialization (using dict conversion) --
 
@@ -183,16 +240,30 @@ class MsgpackModel(msgspec.Struct):
         """
         Serialize the instance to a TOML string.
         """
-        d = self.to_dict()
-        return toml.dumps(d)
+        return msgspec.toml.encode(self, enc_hook=serialization_enc_hook).decode("utf-8")
 
     @classmethod
     def from_toml(cls: Type[T], toml_str: str) -> T:
         """
         Deserialize a TOML string into an instance of the calling class.
         """
-        d = toml.loads(toml_str)
-        return cls.from_dict(d)
+        return msgspec.toml.decode(toml_str.encode("utf-8"), type=cls, dec_hook=serialization_dec_hook)
+
+    def to_toml_path(self, path: pathlib.Path | str) -> None:
+        """
+        Serialize the instance to a TOML string and save to a file.
+        """
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(self.to_toml())
+
+    @classmethod
+    def from_toml_path(cls: Type[T], path: pathlib.Path | str) -> T:
+        """
+        Deserialize a TOML string from a file into an instance of the calling class.
+        """
+        with open(path, "r", encoding="utf-8") as f:
+            toml_str = f.read()
+        return cls.from_toml(toml_str)
 
 
 # ------------------------------------------------------------------------------
@@ -223,10 +294,10 @@ class Container(MsgpackModel):
 
 
 # Test 4: A model with only native types (including pathlib.Path).
-class SimpleModel(MsgpackModel):
+class InheritedModel(Container):
     name: str
     value: int
-    file: pathlib.Path
+    file: pathlib.Path = pathlib.Path("some/file")
 
 
 # ------------------------------------------------------------------------------
@@ -234,7 +305,7 @@ class SimpleModel(MsgpackModel):
 # ------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("Running tests for extended MsgpackModel with pathlib.Path and JSON np.ndarray as list...")
+    print("Running tests for optimized MsgpackModel with pathlib.Path and np.ndarray handling...")
 
     # --- Test 1: MyModel with numpy arrays and a pathlib.Path ---
     arr = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
@@ -259,15 +330,6 @@ if __name__ == "__main__":
         assert np.array_equal(orig, dec)
     assert model1.path.as_posix() == model1_json.path.as_posix()
     print("Test 1b passed: JSON encoding/decoding for MyModel with pathlib.Path.")
-
-    # Dict round-trip
-    d = model1.to_dict()
-    model1_dict = MyModel.from_dict(d)
-    assert np.array_equal(model1.array, model1_dict.array)
-    for orig, dec in zip(model1.arrays, model1_dict.arrays):
-        assert np.array_equal(orig, dec)
-    assert model1.path.as_posix() == model1_dict.path.as_posix()
-    print("Test 1c passed: Dict conversion for MyModel with pathlib.Path.")
 
     # YAML round-trip
     yaml_str = model1.to_yaml()
@@ -316,11 +378,47 @@ if __name__ == "__main__":
         assert orig.path.as_posix() == dec.path.as_posix()
     print("Test 3 passed: Container with a list of MyModel instances round-trips correctly.")
 
-    # --- Test 4: SimpleModel with native types and a pathlib.Path ---
-    simple = SimpleModel(name="TestModel", value=123, file=pathlib.Path("some/file"))
-    simple_toml = SimpleModel.from_toml(simple.to_toml())
+    # --- Test 4: InheritedModel with native types (including pathlib.Path) ---
+    simple = InheritedModel(items=[model_a], name="TestModel", value=123)
+    simple_toml = InheritedModel.from_toml(simple.to_toml())
     assert simple.name == simple_toml.name and simple.value == simple_toml.value
     assert simple.file.as_posix() == simple_toml.file.as_posix()
-    print("Test 4 passed: SimpleModel encoded/decoded correctly via TOML with pathlib.Path.")
+    print("Test 4 passed: InheritedModel encoded/decoded correctly via TOML with pathlib.Path.")
 
     print("All tests passed successfully!")
+
+    # Create a random 1000x1000 numpy array of floats
+    random_array = np.random.rand(10000, 10000)
+
+    # Time saving and loading using numpy's save and load
+    np_save_path = "random_array.npy"
+    start_time = time.time()
+    np.save(np_save_path, random_array)
+    np_save_duration = time.time() - start_time
+
+    start_time = time.time()
+    loaded_array_np = np.load(np_save_path)
+    np_load_duration = time.time() - start_time
+
+    assert np.array_equal(random_array, loaded_array_np)
+    print(f"NumPy save duration: {np_save_duration:.6f} seconds")
+    print(f"NumPy load duration: {np_load_duration:.6f} seconds")
+
+    # Define a model with a single field for the numpy array
+    class ArrayModel(MsgpackModel):
+        array: np.ndarray
+
+    model_instance = ArrayModel(array=random_array)
+
+    # Time saving and loading using the custom model
+    start_time = time.time()
+    model_bytes = model_instance.to_msgpack_path("random_array.msgpack")
+    model_save_duration = time.time() - start_time
+
+    start_time = time.time()
+    loaded_model_instance = ArrayModel.from_msgpack_path("random_array.msgpack")
+    model_load_duration = time.time() - start_time
+
+    assert np.array_equal(random_array, loaded_model_instance.array)
+    print(f"Model save duration: {model_save_duration:.6f} seconds")
+    print(f"Model load duration: {model_load_duration:.6f} seconds")
