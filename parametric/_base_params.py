@@ -23,7 +23,7 @@ class BaseParams(BaseModel):
         extra="forbid",
         # validate default values
         validate_default=True,
-        # to allow numpy
+        # to allow numpy- we are overriding the validation process anyway
         arbitrary_types_allowed=True,
     )
 

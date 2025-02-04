@@ -142,6 +142,7 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
         return None
 
     # == Literal
+    # TODO better check the literal inner args
     if outer_type is Literal:
         return
 
