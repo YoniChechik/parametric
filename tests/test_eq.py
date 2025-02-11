@@ -18,7 +18,7 @@ def test_equality_check():
     other = Test()
     assert instance == other
 
-    other.override_from_dict({"param2": 10})
+    other.param2 = 10
     assert instance != other
 
     # ======= different baseParams with same key name

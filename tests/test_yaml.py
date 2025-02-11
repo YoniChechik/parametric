@@ -1,6 +1,3 @@
-import copy
-
-import numpy as np
 import pytest
 
 from parametric import BaseParams
@@ -8,28 +5,18 @@ from tests.conftest import MyParams
 from tests.tmp_file_context import CreateTmpFile
 
 
-def test_yaml_overrides(params: MyParams):
-    with CreateTmpFile(suffix=".yaml", data="f04: 0.001\nnp01: \n- 1 \n- 2") as tmp_yaml:
-        params.override_from_yaml_path(tmp_yaml.filepath)
-
-    assert params.f04 == 0.001
-    assert np.array_equal(params.np01, [1, 2])
-
-
-def test_non_existent_yaml_file(params: MyParams):
+def test_non_existent_yaml_file():
     non_existent_file = "non_existent_file.yaml"
     with pytest.raises(Exception) as exc_info:
-        params.override_from_yaml_path(non_existent_file)
+        MyParams.load_from_yaml_path(non_existent_file)
     assert "No such file: 'non_existent_file.yaml'" in str(exc_info.value)
 
 
 def test_empty_yaml_overrides(params: MyParams):
-    original_params = copy.deepcopy(params)
-
     with CreateTmpFile(suffix=".yaml", data="\n") as tmp_yaml:
-        params.override_from_yaml_path(tmp_yaml.filepath)
+        empty_yaml_params = MyParams.load_from_yaml_path(tmp_yaml.filepath)
 
-    assert params == original_params
+    assert params == empty_yaml_params
 
 
 def test_load_from_yaml():
@@ -60,8 +47,7 @@ def test_save_yaml(params: MyParams):
         _check_strings_in_yaml(loaded_params, "\nbp01:\n  b03: null\n")
 
         # Reload params and ensure equality
-        params2 = MyParams()
-        params2.override_from_yaml_path(tmp_yaml.filepath)
+        params2 = MyParams.load_from_yaml_path(tmp_yaml.filepath)
 
     assert params == params2
 

@@ -2,13 +2,15 @@ import enum
 from collections import deque
 from pathlib import Path
 from types import GeneratorType, UnionType
-from typing import Any, Literal, Type, Union, get_origin
+from typing import Any, Literal, Type, TypeVar, Union, get_origin
 
 import numpy as np
 from typing_extensions import get_args
 
+T = TypeVar("T")
 
-def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, value: Any) -> None:
+
+def process_field(name: str, annotation: Type[T], value: Any, strict: bool) -> T | None:
     if annotation == Any:
         raise ValueError(f"Type `Any` is not allowed, cannot convert '{name}'")
 
@@ -63,21 +65,20 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
             raise ValueError(f"dtype of 'np.ndarray' {name} should have exactly 1 inner args (e.g. np.ndarray[int])")
 
         arr_dtype = inner_types[0]
-        _validate_immutable_annotation_and_coerce_np(name, arr_dtype, value)
+        process_field(name, arr_dtype, value, strict=strict)
         if arr_dtype is type(None):
             raise ValueError(f"dtype of 'np.ndarray' {name} cannot be NoneType")
         if get_origin(arr_dtype) in {UnionType, tuple}:
             raise ValueError(f"dtype of 'np.ndarray' {name} cannot be Union or Tuple")
 
         arr = np.asarray(value, dtype=inner_types[0])
-        arr.flags.writeable = False
         return arr
 
     # == union
     if outer_type is UnionType:
         res_to_return = None
         for arg in inner_types:
-            tmp_res = _validate_immutable_annotation_and_coerce_np(name, arg, value)
+            tmp_res = process_field(name, arg, value, strict=strict)
             if res_to_return is None:
                 res_to_return = tmp_res
 
@@ -129,7 +130,7 @@ def _validate_immutable_annotation_and_coerce_np(name: str, annotation: Type, va
         is_np_inside = False
         for i, val_i in enumerate(value):
             curr_inner_type = inner_types[0] if is_end_with_elipsis else inner_types[i]
-            arg_res = _validate_immutable_annotation_and_coerce_np(name, curr_inner_type, val_i)
+            arg_res = process_field(name, curr_inner_type, val_i, strict=strict)
 
             if arg_res is not None:
                 res.append(arg_res)

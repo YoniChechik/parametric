@@ -16,8 +16,4 @@ def test_error_non_existent_param():
     t = Test()
     with pytest.raises(Exception) as exc_info:
         t.non_existent_param = 123
-    assert "Instance is frozen" in str(exc_info.value)
-
-    with pytest.raises(Exception) as exc_info:
-        t.override_from_dict({"non_existent_param": 123})
-    assert "Object has no attribute 'non_existent_param'" in str(exc_info.value)
+    assert "`non_existent_param` is not a valid field in Test" in str(exc_info.value)

@@ -4,30 +4,6 @@ import numpy as np
 import pytest
 
 from parametric import BaseParams
-from tests.conftest import MyParams
-
-
-def test_invalid_overrides(params: MyParams):
-    # Attempt to override with invalid type should raise an error
-    with pytest.raises(Exception) as exc_info:
-        params.override_from_dict({"t03": ((1, "a"), "not a tuple")})
-    assert "Value error, In t03, <class 'str'> is not tuple compatible." in str(exc_info.value)
-
-    with pytest.raises(Exception) as exc_info:
-        params.override_from_dict({"t03": (("not an int", "a"), (3.14, "b"))})
-    assert "Input should be a valid integer, unable to parse string as an integer" in str(exc_info.value)
-
-    with pytest.raises(Exception) as exc_info:
-        params.override_from_dict({"t04": "not a tuple"})
-    assert "Value error, In t04, <class 'str'> is not tuple compatible." in str(exc_info.value)
-
-    with pytest.raises(Exception) as exc_info:
-        params.override_from_dict({"i01": "not an int or float"})
-    assert "Input should be a valid integer, unable to parse string as an integer" in str(exc_info.value)
-
-    with pytest.raises(Exception) as exc_info:
-        params.override_from_dict({"non_existent_param": 123})
-    assert "Object has no attribute 'non_existent_param'" in str(exc_info.value)
 
 
 def test_error_mutable_field():

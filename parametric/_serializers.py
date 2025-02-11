@@ -1,36 +1,22 @@
-import enum
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
 
-def decode_custom(obj):
-    # Handle numpy arrays
-    if "__ndarray__" in obj:
-        array = np.frombuffer(obj["data"], dtype=obj["dtype"])
-        return array.reshape(obj["shape"])
-    # Handle pathlib.Path
-    if "__pathlib__" in obj:
-        return Path(obj["as_posix"])
-    return obj
+# TODO can use encoder decoder of pyyaml
+def yaml_custom_encode(value: Any) -> Any:
+    # === path to str
+    if isinstance(value, Path):
+        return str(value.as_posix())
+    # === numpy to list
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    # === tuple (recursively)
+    if isinstance(value, tuple):
+        return tuple(yaml_custom_encode(item) for item in value)
+    from _base_params import BaseParams
 
-
-def encode_custom(obj):
-    # Handle numpy arrays
-    if isinstance(obj, np.ndarray):
-        return {
-            "__ndarray__": True,
-            "data": obj.tobytes(),
-            "dtype": str(obj.dtype),
-            "shape": obj.shape,
-        }
-    # Handle pathlib.Path
-    if isinstance(obj, Path):
-        return {
-            "__pathlib__": True,
-            "as_posix": str(obj.as_posix()),
-        }
-    # Handle Enums by taking their value
-    if isinstance(obj, enum.Enum):
-        return obj.value
-    return obj
+    if isinstance(value, BaseParams):
+        return {name: yaml_custom_encode(getattr(value, name)) for name in value._get_annotations()}
+    return value

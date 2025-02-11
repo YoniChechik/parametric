@@ -1,31 +1,51 @@
+import enum
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import UnionType
+from typing import Any, Type
 
 import msgpack
 import numpy as np
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationInfo, field_serializer, field_validator
-from pydantic_core import PydanticUndefined
+from typing_extensions import dataclass_transform, get_args
 
-from parametric._context_manager import IS_FREEZE, Override
 from parametric._field_eq_check import is_equal_field
-from parametric._serializers import decode_custom, encode_custom
-from parametric._validate import _validate_immutable_annotation_and_coerce_np
+from parametric._io import load_from_yaml_path, process_filepath
+from parametric._validate import process_field
+
+# TODO add test of @property
 
 
-class BaseParams(BaseModel):
-    model_config = ConfigDict(
-        # validate after each assignment
-        validate_assignment=True,
-        # to freeze later
-        frozen=True,
-        # don't allow new fields after init
-        extra="forbid",
-        # validate default values
-        validate_default=True,
-        # to allow numpy- we are overriding the validation process anyway
-        arbitrary_types_allowed=True,
-    )
+# TODO work on this shit
+@dataclass(frozen=True)
+class OnInitConfig:
+    """Configuration settings for MyDataclass subclasses."""
+
+    immutable: bool = False
+    validate_assignment: bool = True
+    validate_on_init: bool = True
+    coerce_when_validating: bool = False
+
+
+# @dataclass_transform is a decorator that helps typecheckers and IDEs understand the dataclass-like behavior of the class.
+@dataclass_transform()
+class BaseParams:
+    """Base class mimicking dataclass behavior with configurable settings."""
+
+    __on_init_config__ = OnInitConfig()
+
+    def __init_subclass__(cls):
+        super().__init_subclass__()
+
+        # TODO is needed?
+        # Ensure the subclass has its own func, inheriting if not overridden
+        if not hasattr(cls, "__on_init_config__"):
+            cls.__on_init_config__ = cls.__base__.__on_init_config__
+
+        # Prevent overriding critical methods
+        for method in ("__init__", "__new__", "__init_subclass__"):
+            if method in cls.__dict__:
+                raise TypeError(f"Subclasses cannot override {method}.")
 
     # NOTE: args/kwargs are needed to make change on init work
     def __new__(cls, *args, **kwargs):
@@ -33,58 +53,40 @@ class BaseParams(BaseModel):
             raise TypeError(f"{cls.__name__} cannot be instantiated directly, only derive from")
         return super().__new__(cls)
 
-    @field_validator("*", mode="before")
-    @classmethod
-    def validate_and_coerce_raw_data(cls, value: Any, val_info: ValidationInfo) -> Any:
-        res = _validate_immutable_annotation_and_coerce_np(
-            val_info.field_name, cls.model_fields[val_info.field_name].annotation, value
-        )
-        if res is None:
-            return value
-        return res
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        if len(args) > 0:
+            raise ValueError("BaseParams does not accept positional arguments")
 
-    def override_from_dict(self, data: dict[str, Any]):
-        # already in override() context:
-        if not IS_FREEZE.res:
-            self._override_for_loop(data)
-        else:
-            with Override():
-                self._override_for_loop(data)
+        # set default values from instantiated class
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+        if self.__on_init_config__.validate_on_init:
+            self.validate()
+
+        # TODO how to get default values? for list the pointers can change later
+        # self.defaults = None
+        self._after_init = True
+
+    def validate(self):
+        for name, declared_type in self._get_annotations().items():
+            input_value = getattr(self, name)
+            res = process_field(name, declared_type, input_value, strict=self.__on_init_config__.coerce_when_validating)
+            if res is not None:
+                setattr(self, name, res)
+            setattr(self, name, input_value)
 
     def _override_for_loop(self, data: dict[str, Any]):
         for k, v in data.items():
             # NOTE: this also validates
             setattr(self, k, v)
 
-    # ==== serializing
-    @field_serializer("*", when_used="json")
-    def _json_serialize_helper(self, value: Any) -> Any:
-        # === path to str
-        if isinstance(value, Path):
-            return str(value.as_posix())
-        # === numpy to list
-        if isinstance(value, np.ndarray):
-            return value.tolist()
-        # === tuple (recursively)
-        if isinstance(value, tuple):
-            return tuple(self._json_serialize_helper(item) for item in value)
-        return value
-
-    def model_dump_serializable(self) -> dict[str, Any]:
-        return self.model_dump(mode="json")
-
     def model_dump_non_defaults(self) -> dict[str, Any]:
         changed = {}
 
-        # NOTE: first we must find all undefined and override them in the default params instance
-        undefined_override_dict = {}
-        for field_name, field_info in self.model_fields.items():
-            default_value_not_validated = field_info.get_default()
-            if default_value_not_validated is PydanticUndefined:
-                undefined_override_dict[field_name] = getattr(self, field_name)
-
-        default_params = self.__class__(**undefined_override_dict)
-        for field_name in self.model_fields:
+        default_params = self.__class__()
+        for field_name in self._get_annotations():
             current_value = getattr(self, field_name)
             if field_name in undefined_override_dict:
                 changed[field_name] = current_value
@@ -102,80 +104,112 @@ class BaseParams(BaseModel):
         return changed
 
     # ====== msgpack
-    def save_msgpack(self, save_path: str | Path) -> None:
-        dict_res = self.model_dump()
-        with open(save_path, "wb") as file:
-            file.write(msgpack.packb(dict_res, default=encode_custom))
+    @classmethod
+    def msgpack_custom_decode(cls, obj: Any) -> Any:
+        # Handle numpy arrays
+        if "__ndarray__" in obj:
+            array = np.frombuffer(obj["data"], dtype=obj["dtype"])
+            return array.reshape(obj["shape"])
+        # Handle pathlib.Path
+        if "__pathlib__" in obj:
+            return Path(obj["as_posix"])
+        # if "__BaseParams__" in obj:
+        #     return obj["data"]
+        return obj
 
-    def override_from_msgpack_path(self, msgpack_path: Path | str) -> None:
-        msgpack_data = _load_from_msgpack_path(msgpack_path)
-        self.override_from_dict(msgpack_data)
+    @classmethod
+    def msgpack_custom_encode(cls, obj):
+        # Handle numpy arrays
+        if isinstance(obj, np.ndarray):
+            return {
+                "__ndarray__": True,
+                "data": obj.data,  # memoryview
+                "dtype": str(obj.dtype),
+                "shape": obj.shape,
+            }
+        # Handle pathlib.Path
+        if isinstance(obj, Path):
+            return {
+                "__pathlib__": True,
+                "as_posix": str(obj.as_posix()),
+            }
+        # Handle Enums by taking their value
+        if isinstance(obj, enum.Enum):
+            return obj.value
+
+        if isinstance(obj, BaseParams):
+            return {"__BaseParams__": True, "data": {name: getattr(obj, name) for name in obj._get_annotations()}}
+
+        return obj
+
+    def save_msgpack(self, save_path: str | Path) -> None:
+        with open(save_path, "wb") as file:
+            file.write(msgpack.packb(self, default=self.msgpack_custom_encode))
 
     @classmethod
     def load_from_msgpack_path(cls, msgpack_path: Path | str):
-        msgpack_data = _load_from_msgpack_path(msgpack_path)
-        return cls(**msgpack_data)
+        msgpack_path = process_filepath(msgpack_path)
+
+        with open(msgpack_path, "rb") as file:
+            unpacked_dict = msgpack.unpackb(file.read(), object_hook=cls.msgpack_custom_decode)
+
+        return cls._msgpack_dict_to_base_params(unpacked_dict)
+
+    @classmethod
+    def _msgpack_dict_to_base_params(cls, unpacked_dict):
+        unpacked_dict = unpacked_dict["data"]
+        for k in unpacked_dict:
+            if isinstance(unpacked_dict[k], dict) and "__BaseParams__" in unpacked_dict[k]:
+                base_params_subclass: BaseParams = cls._get_annotations()[k]
+                if type(base_params_subclass) is UnionType:
+                    for inner_type in get_args(base_params_subclass):
+                        if issubclass(inner_type, BaseParams):
+                            base_params_subclass = inner_type
+                            break
+
+                unpacked_dict[k] = base_params_subclass._msgpack_dict_to_base_params(unpacked_dict[k])
+                # unpacked_dict[k] = cls._msgpack_dict_to_base_params(unpacked_dict[k])
+
+        # TODO i dont want to validate and coerce here
+        return cls(**unpacked_dict)
 
     # ====== yaml
     def save_yaml(self, save_path: str | Path) -> None:
-        with open(save_path, "w") as file:
-            yaml.dump(self.model_dump_serializable(), file)
+        # TODO can use encoder decoder
+        res = {}
+        for name in self._get_annotations():
+            val = getattr(self, name)
+            res[name] = val
 
-    def override_from_yaml_path(self, yaml_path: Path | str) -> None:
-        yaml_data = _open_yaml_file(yaml_path)
-        self.override_from_dict(yaml_data)
+        with open(save_path, "w") as file:
+            yaml.dump(res, file)
 
     @classmethod
     def load_from_yaml_path(cls, yaml_path: Path | str):
-        yaml_data = _open_yaml_file(yaml_path)
+        yaml_data = load_from_yaml_path(yaml_path)
 
         return cls(**yaml_data)
+
+    @classmethod
+    def _get_annotations(cls) -> dict[str, Type]:
+        # Collect __annotations__ from base classes recursively, starting from object->BaseParams->...
+        annotations: dict[str, Type] = {}
+        for base_cls in reversed(cls.__mro__):
+            annotations.update(getattr(base_cls, "__annotations__", {}))
+        return annotations
 
     # ===== equality check
     def __eq__(self, other: "BaseParams") -> bool:
         if not isinstance(other, BaseParams):
             return False
-        for field_name in self.model_fields:
-            if field_name not in other.model_fields:
+        for field_name in self._get_annotations():
+            if field_name not in other._get_annotations():
                 return False
             if not is_equal_field(getattr(self, field_name), getattr(other, field_name)):
                 return False
         return True
 
-    # ==== setter with freeze check
     def __setattr__(self, name, value):
-        if IS_FREEZE.res:
-            raise AttributeError("Instance is frozen")
-        self.model_config["frozen"] = False
-        try:
-            res = super().__setattr__(name, value)
-        finally:
-            self.model_config["frozen"] = True
-
-        return res
-
-
-def _open_yaml_file(yaml_path: Path | str) -> dict[str, Any]:
-    _validate_filepath(yaml_path)
-
-    with open(yaml_path, "r") as file:
-        yaml_data = yaml.safe_load(file)
-    # None returns if file is empty
-    if yaml_data is None:
-        yaml_data = {}
-    return yaml_data
-
-
-def _validate_filepath(filepath: Path | str) -> Path:
-    filepath = Path(filepath)
-    if not filepath.is_file():
-        raise FileNotFoundError(f"No such file: '{filepath}'")
-    return filepath
-
-
-def _load_from_msgpack_path(msgpack_path: Path | str):
-    _validate_filepath(msgpack_path)
-
-    with open(msgpack_path, "rb") as file:
-        msgpack_data = msgpack.unpackb(file.read(), object_hook=decode_custom)
-    return msgpack_data
+        if hasattr(self, "_after_init") and name not in self._get_annotations():
+            raise AttributeError(f"`{name}` is not a valid field in {self.__class__.__name__}")
+        return super().__setattr__(name, value)
