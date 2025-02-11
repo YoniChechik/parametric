@@ -11,7 +11,14 @@ from typing_extensions import dataclass_transform, get_args
 
 from parametric._field_eq_check import is_equal_field
 from parametric._io import load_from_yaml_path, process_filepath
-from parametric._validate import process_field
+from parametric._process import process_field
+
+
+class _UNSET_FIELD:
+    pass
+
+
+UNSET_FIELD = _UNSET_FIELD()
 
 # TODO add test of @property
 
@@ -60,13 +67,13 @@ class BaseParams:
 
         # set default values from instantiated class
         for k, v in kwargs.items():
+            if k not in self._get_annotations():
+                raise AttributeError(f"`{k}` is not a valid field in {self.__class__.__name__}")
             setattr(self, k, v)
 
         if self.__on_init_config__.validate_on_init:
             self.validate()
 
-        # TODO how to get default values? for list the pointers can change later
-        # self.defaults = None
         self._after_init = True
 
     def validate(self):
@@ -84,19 +91,18 @@ class BaseParams:
 
     def model_dump_non_defaults(self) -> dict[str, Any]:
         changed = {}
-
-        default_params = self.__class__()
-        for field_name in self._get_annotations():
-            current_value = getattr(self, field_name)
-            if field_name in undefined_override_dict:
-                changed[field_name] = current_value
+        for field_name in self.__class__._get_annotations():
+            default_value = getattr(self.__class__, field_name, UNSET_FIELD)
+            if default_value is UNSET_FIELD:
+                changed[field_name] = getattr(self, field_name)
                 continue
+
+            current_value = getattr(self, field_name)
             if isinstance(current_value, BaseParams):
                 nested_changed = current_value.model_dump_non_defaults()
                 if nested_changed:
                     changed[field_name] = nested_changed
                 continue
-            default_value = getattr(default_params, field_name)
 
             if not is_equal_field(default_value, current_value):
                 changed[field_name] = current_value
@@ -113,8 +119,10 @@ class BaseParams:
         # Handle pathlib.Path
         if "__pathlib__" in obj:
             return Path(obj["as_posix"])
-        # if "__BaseParams__" in obj:
-        #     return obj["data"]
+        # Handle sequence types
+        if "__sequence__" in obj:
+            seq_type = {"list": list, "tuple": tuple, "set": set}[obj["type"]]
+            return seq_type(obj["data"])
         return obj
 
     @classmethod
@@ -133,9 +141,20 @@ class BaseParams:
                 "__pathlib__": True,
                 "as_posix": str(obj.as_posix()),
             }
+        # Handle sequence types
+        # TODO this doesnt work on nested (e.g. set(tuple))
+        if isinstance(obj, (list, tuple, set)):
+            return {
+                "__sequence__": True,
+                "type": type(obj).__name__,
+                "data": list(obj),
+            }
         # Handle Enums by taking their value
         if isinstance(obj, enum.Enum):
-            return obj.value
+            return {
+                "__enum__": True,
+                "value": obj.value,
+            }
 
         if isinstance(obj, BaseParams):
             return {"__BaseParams__": True, "data": {name: getattr(obj, name) for name in obj._get_annotations()}}
@@ -159,16 +178,26 @@ class BaseParams:
     def _msgpack_dict_to_base_params(cls, unpacked_dict):
         unpacked_dict = unpacked_dict["data"]
         for k in unpacked_dict:
+            k_type = cls._get_annotations()[k]
             if isinstance(unpacked_dict[k], dict) and "__BaseParams__" in unpacked_dict[k]:
-                base_params_subclass: BaseParams = cls._get_annotations()[k]
-                if type(base_params_subclass) is UnionType:
-                    for inner_type in get_args(base_params_subclass):
+                if type(k_type) is UnionType:
+                    for inner_type in get_args(k_type):
                         if issubclass(inner_type, BaseParams):
-                            base_params_subclass = inner_type
                             break
+                    base_params_class: BaseParams = inner_type
+                else:
+                    base_params_class: BaseParams = k_type
 
-                unpacked_dict[k] = base_params_subclass._msgpack_dict_to_base_params(unpacked_dict[k])
-                # unpacked_dict[k] = cls._msgpack_dict_to_base_params(unpacked_dict[k])
+                unpacked_dict[k] = base_params_class._msgpack_dict_to_base_params(unpacked_dict[k])
+            elif isinstance(unpacked_dict[k], dict) and "__enum__" in unpacked_dict[k]:
+                if type(k_type) is UnionType:
+                    for inner_type in get_args(k_type):
+                        if isinstance(inner_type, enum.EnumMeta):
+                            break
+                    enum_class: enum.EnumMeta = inner_type
+                else:
+                    enum_class: enum.EnumMeta = k_type
+                unpacked_dict[k] = enum_class(unpacked_dict[k]["value"])
 
         # TODO i dont want to validate and coerce here
         return cls(**unpacked_dict)

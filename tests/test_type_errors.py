@@ -6,15 +6,6 @@ import pytest
 from parametric import BaseParams
 
 
-def test_error_mutable_field():
-    class Test(BaseParams):
-        list_param: list[int] = [1, 2, 3]
-
-    with pytest.raises(Exception) as exc_info:
-        Test()
-    assert "Parameter 'list_param' must be one of the following" in str(exc_info.value)
-
-
 def test_error_ellipsis():
     class Test(BaseParams):
         x: ... = 1

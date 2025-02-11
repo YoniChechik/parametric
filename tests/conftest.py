@@ -78,6 +78,29 @@ class A(BaseParams):
     e01: Color = Color.RED
     e02: StatusCode = StatusCode.SUCCESS
 
+    # Sets
+    set01: set[int] = {1, 2, 3}
+    set02: set[str] = {"a", "b", "c"}
+    # TODO fix msgpack
+    # set03: set[tuple[int, str]] = {(1, "x"), (2, "y")}
+    set04: set[int] | None = {4, 5, 6}
+
+    # Lists
+    list01: list[int] = [1, 2, 3]
+    list02: list[str] = ["a", "b", "c"]
+    list03: list[tuple[int, str]] = [(1, "x"), (2, "y")]
+    list04: list[np.ndarray[int]] = [np.array([1, 2]), np.array([3, 4])]
+    list05: list[int] | None = [7, 8, 9]
+
+    # Dictionaries
+    dict01: dict[str, int] = {"a": 1, "b": 2}
+    dict02: dict[str, list[int]] = {"x": [1, 2], "y": [3, 4]}
+    dict03: dict[str, tuple[int, str]] = {"key1": (1, "a"), "key2": (2, "b")}
+    dict04: dict[str, np.ndarray[int]] = {"arr1": np.array([1, 2]), "arr2": np.array([3, 4])}
+    dict06: dict[str, int] | None = {"x": 1, "y": 2}
+
+    # TODO add numpy dtypes
+
 
 class B(A):
     """
