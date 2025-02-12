@@ -5,13 +5,13 @@ from types import UnionType
 from typing import Any, Type
 
 import msgpack
-import numpy as np
 import yaml
 from typing_extensions import dataclass_transform, get_args
 
 from parametric._field_eq_check import is_equal_field
 from parametric._io import load_from_yaml_path, process_filepath
 from parametric._process import process_field
+from parametric._serializers import msgpack_custom_decode, msgpack_custom_encode
 
 
 class _UNSET_FIELD:
@@ -84,11 +84,6 @@ class BaseParams:
                 setattr(self, name, res)
             setattr(self, name, input_value)
 
-    def _override_for_loop(self, data: dict[str, Any]):
-        for k, v in data.items():
-            # NOTE: this also validates
-            setattr(self, k, v)
-
     def model_dump_non_defaults(self) -> dict[str, Any]:
         changed = {}
         for field_name in self.__class__._get_annotations():
@@ -109,76 +104,25 @@ class BaseParams:
 
         return changed
 
-    # ====== msgpack
-    @classmethod
-    def msgpack_custom_decode(cls, obj: Any) -> Any:
-        # Handle numpy arrays
-        if "__ndarray__" in obj:
-            array = np.frombuffer(obj["data"], dtype=obj["dtype"])
-            return array.reshape(obj["shape"])
-        # Handle pathlib.Path
-        if "__pathlib__" in obj:
-            return Path(obj["as_posix"])
-        # Handle sequence types
-        if "__sequence__" in obj:
-            seq_type = {"list": list, "tuple": tuple, "set": set}[obj["type"]]
-            return seq_type(obj["data"])
-        return obj
-
-    @classmethod
-    def msgpack_custom_encode(cls, obj):
-        # Handle numpy arrays
-        if isinstance(obj, np.ndarray):
-            return {
-                "__ndarray__": True,
-                "data": obj.data,  # memoryview
-                "dtype": str(obj.dtype),
-                "shape": obj.shape,
-            }
-        # Handle pathlib.Path
-        if isinstance(obj, Path):
-            return {
-                "__pathlib__": True,
-                "as_posix": str(obj.as_posix()),
-            }
-        # Handle sequence types
-        # TODO this doesnt work on nested (e.g. set(tuple))
-        if isinstance(obj, (list, tuple, set)):
-            return {
-                "__sequence__": True,
-                "type": type(obj).__name__,
-                "data": list(obj),
-            }
-        # Handle Enums by taking their value
-        if isinstance(obj, enum.Enum):
-            return {
-                "__enum__": True,
-                "value": obj.value,
-            }
-
-        if isinstance(obj, BaseParams):
-            return {"__BaseParams__": True, "data": {name: getattr(obj, name) for name in obj._get_annotations()}}
-
-        return obj
-
     def save_msgpack(self, save_path: str | Path) -> None:
         with open(save_path, "wb") as file:
-            file.write(msgpack.packb(self, default=self.msgpack_custom_encode))
+            file.write(msgpack.packb(self, default=msgpack_custom_encode))
 
     @classmethod
     def load_from_msgpack_path(cls, msgpack_path: Path | str):
         msgpack_path = process_filepath(msgpack_path)
 
         with open(msgpack_path, "rb") as file:
-            unpacked_dict = msgpack.unpackb(file.read(), object_hook=cls.msgpack_custom_decode)
+            unpacked_dict = msgpack.unpackb(file.read(), object_hook=msgpack_custom_decode)
 
         return cls._msgpack_dict_to_base_params(unpacked_dict)
 
     @classmethod
     def _msgpack_dict_to_base_params(cls, unpacked_dict):
         unpacked_dict = unpacked_dict["data"]
+        annotations = cls._get_annotations()
         for k in unpacked_dict:
-            k_type = cls._get_annotations()[k]
+            k_type = annotations[k]
             if isinstance(unpacked_dict[k], dict) and "__BaseParams__" in unpacked_dict[k]:
                 if type(k_type) is UnionType:
                     for inner_type in get_args(k_type):
@@ -234,6 +178,7 @@ class BaseParams:
         for field_name in self._get_annotations():
             if field_name not in other._get_annotations():
                 return False
+
             if not is_equal_field(getattr(self, field_name), getattr(other, field_name)):
                 return False
         return True

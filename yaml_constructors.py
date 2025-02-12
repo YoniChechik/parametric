@@ -26,7 +26,7 @@ def yaml_represent_ndarray(dumper: yaml.Dumper, data: np.ndarray) -> yaml.Node:
 def yaml_construct_baseparams(loader: yaml.Loader, node: yaml.Node) -> "BaseParams":
     """Deserialize BaseParams objects from YAML."""
     data = loader.construct_mapping(node)
-    oreturn BaseParams(**data)
+    return BaseParams(**data)
 
     return obj
 

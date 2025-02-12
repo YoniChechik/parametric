@@ -94,3 +94,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+*.msgpack
+*.yaml
+*.yml
+*.json
+*.jsonl
+*.jsonl.gz
+
