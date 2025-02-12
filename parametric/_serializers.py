@@ -71,7 +71,7 @@ def msgpack_custom_encode(obj):
 
 
 def msgpack_custom_decode(obj: Any) -> Any:
-    if isinstance(obj, (int, float, bool, str)):
+    if not isinstance(obj, dict):
         return obj
     # Handle numpy arrays
     if "__ndarray__" in obj:

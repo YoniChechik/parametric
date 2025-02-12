@@ -100,4 +100,5 @@ dmypy.json
 *.json
 *.jsonl
 *.jsonl.gz
-
+*.npy
+*.npz
