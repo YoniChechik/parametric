@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
-import pytest
 
 from parametric import BaseParams
 
@@ -56,7 +55,6 @@ class A(BaseParams):
     # For bytes
     by01: bytes | None = None
     by02: bytes = b"default"
-    # by03: bytes = "default"  # string
 
     # For Path
     p01: Path = "/tmp/yy"
@@ -81,8 +79,7 @@ class A(BaseParams):
     # Sets
     set01: set[int] = {1, 2, 3}
     set02: set[str] = {"a", "b", "c"}
-    # TODO fix msgpack
-    # set03: set[tuple[int, str]] = {(1, "x"), (2, "y")}
+    set03: set[tuple[int, str]] = {(1, "x"), (2, "y")}
     set04: set[int] | None = {4, 5, 6}
 
     # Lists
@@ -114,9 +111,3 @@ class B(A):
 
 class MyParams(B):
     xxx: int = 1
-
-
-@pytest.fixture(scope="function")  # generate new instance for each test function
-def params():
-    x = MyParams()
-    return x

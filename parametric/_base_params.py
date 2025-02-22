@@ -2,25 +2,22 @@ import enum
 from dataclasses import dataclass
 from pathlib import Path
 from types import UnionType
-from typing import Any, Type
+from typing import Any, Type, get_args
 
-import msgpack
-import yaml
-from typing_extensions import dataclass_transform, get_args
+from typing_extensions import dataclass_transform  # we can import directly from typing on version >= python3.11
 
 from parametric._field_eq_check import is_equal_field
-from parametric._io import load_from_yaml_path, process_filepath
+from parametric._io import process_filepath
+from parametric._msgpack import BaseParamsData, EnumData, pack_obj, unpack_obj
 from parametric._process import process_field
-from parametric._serializers import msgpack_custom_decode, msgpack_custom_encode
 
 
+# TODO idea: make this package dataclass++ where we can derive from msgpack or yaml or just reguler validation coercion checks + immutables only
 class _UNSET_FIELD:
     pass
 
 
 UNSET_FIELD = _UNSET_FIELD()
-
-# TODO add test of @property
 
 
 # TODO work on this shit
@@ -28,7 +25,6 @@ UNSET_FIELD = _UNSET_FIELD()
 class OnInitConfig:
     """Configuration settings for MyDataclass subclasses."""
 
-    immutable: bool = False
     validate_assignment: bool = True
     validate_on_init: bool = True
     coerce_when_validating: bool = False
@@ -44,13 +40,8 @@ class BaseParams:
     def __init_subclass__(cls):
         super().__init_subclass__()
 
-        # TODO is needed?
-        # Ensure the subclass has its own func, inheriting if not overridden
-        if not hasattr(cls, "__on_init_config__"):
-            cls.__on_init_config__ = cls.__base__.__on_init_config__
-
         # Prevent overriding critical methods
-        for method in ("__init__", "__new__", "__init_subclass__"):
+        for method in ("__init__", "__new__", "__init_subclass__", "__post_init__"):
             if method in cls.__dict__:
                 raise TypeError(f"Subclasses cannot override {method}.")
 
@@ -69,20 +60,17 @@ class BaseParams:
         for k, v in kwargs.items():
             if k not in self._get_annotations():
                 raise AttributeError(f"`{k}` is not a valid field in {self.__class__.__name__}")
-            setattr(self, k, v)
+            super().__setattr__(k, v)
 
         if self.__on_init_config__.validate_on_init:
             self.validate()
 
-        self._after_init = True
-
     def validate(self):
         for name, declared_type in self._get_annotations().items():
             input_value = getattr(self, name)
-            res = process_field(name, declared_type, input_value, strict=self.__on_init_config__.coerce_when_validating)
-            if res is not None:
-                setattr(self, name, res)
-            setattr(self, name, input_value)
+            result = process_field(name, declared_type, input_value, strict=self.__on_init_config__.validate_on_init)
+            if result is not None and result.is_coerced:
+                setattr(self, name, result.coerced_value)
 
     def model_dump_non_defaults(self) -> dict[str, Any]:
         changed = {}
@@ -105,25 +93,27 @@ class BaseParams:
         return changed
 
     def save_msgpack(self, save_path: str | Path) -> None:
-        with open(save_path, "wb") as file:
-            file.write(msgpack.packb(self, default=msgpack_custom_encode))
+        with open(save_path, "wb") as f:
+            pack_obj(self.__dict__, f)
 
     @classmethod
-    def load_from_msgpack_path(cls, msgpack_path: Path | str):
+    def load_msgpack(cls, msgpack_path: Path | str):
         msgpack_path = process_filepath(msgpack_path)
 
-        with open(msgpack_path, "rb") as file:
-            unpacked_dict = msgpack.unpackb(file.read(), object_hook=msgpack_custom_decode)
+        path = Path(msgpack_path)
+        with open(path, "rb") as f:
+            loaded_data = unpack_obj(f)
 
-        return cls._msgpack_dict_to_base_params(unpacked_dict)
+        return cls._postprocess_msgpack(loaded_data)
 
     @classmethod
-    def _msgpack_dict_to_base_params(cls, unpacked_dict):
-        unpacked_dict = unpacked_dict["data"]
+    def _postprocess_msgpack(cls, unpacked_dict: dict[str, Any]):
         annotations = cls._get_annotations()
         for k in unpacked_dict:
             k_type = annotations[k]
-            if isinstance(unpacked_dict[k], dict) and "__BaseParams__" in unpacked_dict[k]:
+            # TODO for union handle the possibility of N of type baseparams/enum/sequence
+            if isinstance(unpacked_dict[k], BaseParamsData):
+                # Handle nested BaseParamsData
                 if type(k_type) is UnionType:
                     for inner_type in get_args(k_type):
                         if issubclass(inner_type, BaseParams):
@@ -132,8 +122,9 @@ class BaseParams:
                 else:
                     base_params_class: BaseParams = k_type
 
-                unpacked_dict[k] = base_params_class._msgpack_dict_to_base_params(unpacked_dict[k])
-            elif isinstance(unpacked_dict[k], dict) and "__enum__" in unpacked_dict[k]:
+                unpacked_dict[k] = base_params_class._postprocess_msgpack(unpacked_dict[k].param_dict)
+            elif isinstance(unpacked_dict[k], EnumData):
+                # Handle EnumData
                 if type(k_type) is UnionType:
                     for inner_type in get_args(k_type):
                         if isinstance(inner_type, enum.EnumMeta):
@@ -141,27 +132,11 @@ class BaseParams:
                     enum_class: enum.EnumMeta = inner_type
                 else:
                     enum_class: enum.EnumMeta = k_type
-                unpacked_dict[k] = enum_class(unpacked_dict[k]["value"])
+                unpacked_dict[k] = enum_class[unpacked_dict[k].value_name]
+            # TODO handle sequence like...
 
         # TODO i dont want to validate and coerce here
         return cls(**unpacked_dict)
-
-    # ====== yaml
-    def save_yaml(self, save_path: str | Path) -> None:
-        # TODO can use encoder decoder
-        res = {}
-        for name in self._get_annotations():
-            val = getattr(self, name)
-            res[name] = val
-
-        with open(save_path, "w") as file:
-            yaml.dump(res, file)
-
-    @classmethod
-    def load_from_yaml_path(cls, yaml_path: Path | str):
-        yaml_data = load_from_yaml_path(yaml_path)
-
-        return cls(**yaml_data)
 
     @classmethod
     def _get_annotations(cls) -> dict[str, Type]:
@@ -184,6 +159,10 @@ class BaseParams:
         return True
 
     def __setattr__(self, name, value):
-        if hasattr(self, "_after_init") and name not in self._get_annotations():
+        if name not in self._get_annotations():
             raise AttributeError(f"`{name}` is not a valid field in {self.__class__.__name__}")
         return super().__setattr__(name, value)
+
+    def __repr__(self) -> str:
+        items = [f"{k}={repr(v)}" for k, v in self.__dict__.items()]
+        return f"{self.__class__.__name__}({', '.join(items)})"

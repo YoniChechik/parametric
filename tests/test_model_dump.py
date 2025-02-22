@@ -1,7 +1,8 @@
 from tests.conftest import MyParams
 
 
-def test_model_dump_non_defaults(params: MyParams):
+def test_model_dump_non_defaults():
+    params = MyParams()
     params.f04 = 0.001
     params.bp01.i01 = 10000
 

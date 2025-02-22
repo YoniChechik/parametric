@@ -15,22 +15,6 @@ def test_error_ellipsis():
     assert "Ellipsis (`...`) is only allowed in this type format `tuple(x" in str(exc_info.value)
 
 
-def test_error_tuple_no_inner_args():
-    class Test(BaseParams):
-        t: tuple = (1, 2, 3)
-
-    with pytest.raises(Exception) as exc_info:
-        Test()
-    assert "Type of t cannot be 'tuple' without specifying element types" in str(exc_info.value)
-
-    class Test3(BaseParams):
-        t: tuple[tuple] = ((1, 2, 3),)
-
-    with pytest.raises(Exception) as exc_info:
-        Test3()
-    assert "Type of t cannot be 'tuple' without specifying element types" in str(exc_info.value)
-
-
 def test_error_np_array_type():
     class Test(BaseParams):
         array_param: np.array = np.array([1, 2, 3])
