@@ -7,7 +7,6 @@ from typing import Any, Literal, Type, TypeVar, Union, get_args, get_origin
 
 import numpy as np
 
-# TODO remove constrainet for tuple[x].
 T = TypeVar("T")
 
 ALLOWED_NUMPY_TYPES = {
@@ -29,6 +28,49 @@ class _ProcessingResult:
     def __init__(self, *, is_coerced: bool, coerced_value: Any = None):
         self.is_coerced = is_coerced
         self.coerced_value = coerced_value
+
+
+def process_field(name: str, annotation: Type[T], value: Any, strict: bool) -> _ProcessingResult | None:
+    if annotation == Any:
+        raise ValueError(f"Type `Any` is not allowed, cannot convert '{name}'")
+
+    if annotation is Ellipsis:
+        raise ValueError(
+            f"Ellipsis (`...`) is only allowed in this type format `tuple(x, ...)`, cannot convert '{name}'"
+        )
+
+    # Check old style type hints
+    try:
+        if annotation._name == "Tuple":
+            raise ValueError("Old Tuple[x,y,z] type is bad practice. Use tuple[x,y,z] instead.")
+        if annotation._name == "Optional":
+            raise ValueError("Old Optional[x] type is bad practice. Use x | None instead.")
+    except AttributeError:
+        pass
+
+    if get_origin(annotation) is Union or annotation is Union:
+        raise ValueError("Old Union[x,y,z] type is bad practice. Use x | y | z instead.")
+
+    processors: list[BaseProcessor] = [
+        BasicTypeProcessor(),
+        EnumProcessor(),
+        NumpyTypeProcessor(),
+        ListTypeProcessor(),
+        TupleTypeProcessor(),
+        SetTypeProcessor(),
+        DictTypeProcessor(),
+        UnionTypeProcessor(),
+        LiteralTypeProcessor(),
+        # needs to be last
+        BaseParamsProcessor(),
+    ]
+
+    for processor in processors:
+        result = processor(name, annotation, value, strict)
+        if result is not None:
+            return result
+
+    raise ValueError(f"Parameter '{name}' does not have a supported type")
 
 
 class BaseProcessor(ABC):
@@ -69,24 +111,26 @@ class UnionTypeProcessor(BaseProcessor):
             return None
 
         inner_types = get_args(annotation)
-        errors = []
 
-        # Try conversions
-        for arg in inner_types:
-            try:
-                # TODO fix here
-                result = process_field(name, arg, value, strict=strict)
-                if result is not None:
-                    return result  # Already a _ProcessingResult
-            except Exception as e:
-                errors.append(str(e))
+        # Validate union types
+        if len(inner_types) > 2:
+            raise ValueError(f"Union type for {name} can only have two types: a type and None (e.g. int | None)")
 
-        # If we get here, all conversions failed
-        error_details = "\n".join(f"- {err}" for err in errors)
-        raise ValueError(
-            f"Could not convert value '{value}' to any of the union types for parameter '{name}'. "
-            f"Attempted conversions failed with:\n{error_details}"
-        )
+        if type(None) not in inner_types:
+            raise ValueError(f"Union type for {name} must include None as one of the types (e.g. int | None)")
+
+        # Handle None value
+        if value is None:
+            return _ProcessingResult(is_coerced=False)
+
+        # Try conversion with the non-None type
+        main_type = next(t for t in inner_types if t is not type(None))
+        try:
+            return process_field(name, main_type, value, strict=strict)
+        except Exception as e:
+            raise ValueError(
+                f"Could not convert value '{value}' to either None or {main_type} for parameter '{name}': {str(e)}"
+            )
 
 
 class LiteralTypeProcessor(BaseProcessor):
@@ -163,7 +207,10 @@ def _validate_sequence_value(name: str, value: Any):
 
 class ListTypeProcessor(BaseProcessor):
     def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
-        outer_type = get_origin(annotation) or annotation
+        if annotation is list:
+            raise ValueError(f"list type {name} must have exactly inner type argument (e.g. list[int])")
+
+        outer_type = get_origin(annotation)
         if outer_type is not list:
             return None
 
@@ -181,7 +228,10 @@ class ListTypeProcessor(BaseProcessor):
 
 class TupleTypeProcessor(BaseProcessor):
     def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
-        outer_type = get_origin(annotation) or annotation
+        if annotation is tuple:
+            raise ValueError(f"tuple type {name} must have exactly inner type argument (e.g. tuple[int, int])")
+
+        outer_type = get_origin(annotation)
         if outer_type is not tuple:
             return None
 
@@ -204,7 +254,10 @@ class TupleTypeProcessor(BaseProcessor):
 
 class SetTypeProcessor(BaseProcessor):
     def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
-        outer_type = get_origin(annotation) or annotation
+        if annotation is set:
+            raise ValueError(f"set type {name} must have exactly inner type argument (e.g. set[int])")
+
+        outer_type = get_origin(annotation)
         if outer_type is not set:
             return None
 
@@ -222,7 +275,16 @@ class SetTypeProcessor(BaseProcessor):
 
 class NumpyTypeProcessor(BaseProcessor):
     def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
-        outer_type = get_origin(annotation) or annotation
+        if annotation is np.ndarray:
+            raise TypeError(
+                f"Type of {name} cannot be 'np.ndarray' without specifying element types (e.g. np.ndarray[int])"
+            )
+
+        outer_type = get_origin(annotation)
+
+        if outer_type is np.array or annotation is np.array:
+            raise TypeError(f"Type of {name} cannot be 'np.array'. Try np.ndarray[int] instead")
+
         if outer_type is not np.ndarray:
             return None
 
@@ -231,24 +293,22 @@ class NumpyTypeProcessor(BaseProcessor):
         if not isinstance(value, (list, tuple, np.ndarray)):
             raise ValueError(f"Value for numpy array parameter '{name}' must be array-like (list, tuple, or ndarray)")
 
-        if len(inner_types) > 1:
-            raise ValueError(f"dtype of 'np.ndarray' {name} should have at most 1 inner arg (e.g. np.ndarray[int])")
-        if len(inner_types) == 0:
-            return _ProcessingResult(is_coerced=True, coerced_value=np.asarray(value))
-        if len(inner_types) == 1:
-            arr_dtype = inner_types[0]
+        if len(inner_types) != 1:
+            raise ValueError(f"dtype of 'np.ndarray' {name} should have exactly 1 inner arg (e.g. np.ndarray[int])")
 
-            # Check for allowed numpy dtypes
-            allowed_dtypes = {int, float, bool}
-            allowed_dtypes.update(ALLOWED_NUMPY_TYPES)
+        arr_dtype = inner_types[0]
 
-            if arr_dtype not in allowed_dtypes:
-                raise ValueError(
-                    f"dtype of 'np.ndarray' {name} must be one of the allowed types: "
-                    f"{', '.join(str(dtype.__name__) for dtype in allowed_dtypes)}"
-                )
+        # Check for allowed numpy dtypes
+        allowed_dtypes = {int, float, bool}
+        allowed_dtypes.update(ALLOWED_NUMPY_TYPES)
 
-            return _ProcessingResult(is_coerced=True, coerced_value=np.asarray(value, dtype=arr_dtype))
+        if arr_dtype not in allowed_dtypes:
+            raise ValueError(
+                f"dtype of 'np.ndarray' {name} must be one of the allowed types: "
+                f"{', '.join(str(dtype.__name__) for dtype in allowed_dtypes)}"
+            )
+
+        return _ProcessingResult(is_coerced=True, coerced_value=np.asarray(value, dtype=arr_dtype))
 
 
 class BaseParamsProcessor(BaseProcessor):
@@ -256,58 +316,7 @@ class BaseParamsProcessor(BaseProcessor):
         # avoid circular import
         from parametric import BaseParams
 
-        try:
-            if issubclass(annotation, BaseParams):
-                if isinstance(value, BaseParams):
-                    return _ProcessingResult(is_coerced=False)
-                else:
-                    raise ValueError(f"Parameter '{name}' must be a subclass of BaseParams")
-        except TypeError:
-            pass
+        if issubclass(annotation, BaseParams):
+            return _ProcessingResult(is_coerced=False)
+
         return None
-
-
-def process_field(name: str, annotation: Type[T], value: Any, strict: bool) -> _ProcessingResult | None:
-    if name == "np04":
-        print(f"processing {name} with {annotation} and {value}")
-    if annotation == Any:
-        raise ValueError(f"Type `Any` is not allowed, cannot convert '{name}'")
-
-    if annotation is Ellipsis:
-        raise ValueError(
-            f"Ellipsis (`...`) is only allowed in this type format `tuple(x, ...)`, cannot convert '{name}'"
-        )
-
-    # Check old style type hints
-    try:
-        if annotation._name == "Tuple":
-            raise ValueError("Old Tuple[x,y,z] type is bad practice. Use tuple[x,y,z] instead.")
-        if annotation._name == "Optional":
-            raise ValueError("Old Optional[x] type is bad practice. Use x | None instead.")
-    except AttributeError:
-        pass
-
-    if get_origin(annotation) is Union or annotation is Union:
-        raise ValueError("Old Union[x,y,z] type is bad practice. Use x | y | z instead.")
-
-    processors: list[BaseProcessor] = [
-        BasicTypeProcessor(),
-        EnumProcessor(),
-        BaseParamsProcessor(),
-        NumpyTypeProcessor(),
-        ListTypeProcessor(),
-        TupleTypeProcessor(),
-        SetTypeProcessor(),
-        DictTypeProcessor(),
-        UnionTypeProcessor(),
-        LiteralTypeProcessor(),
-    ]
-
-    for processor in processors:
-        result = processor(name, annotation, value, strict)
-        if result is not None:
-            if isinstance(result, np.ndarray):
-                return result
-            return result
-
-    raise ValueError(f"Parameter '{name}' does not have a supported type")

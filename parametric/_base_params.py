@@ -12,7 +12,7 @@ from parametric._msgpack import BaseParamsData, EnumData, pack_obj, unpack_obj
 from parametric._process import process_field
 
 
-# TODO idea: make this package dataclass++ where we can derive from msgpack or yaml or just reguler validation coercion checks + immutables only
+# TODO idea: make this package dataclass++ where we can derive from msgpack or just reguler validation coercion checks + immutables only
 class _UNSET_FIELD:
     pass
 
@@ -79,7 +79,11 @@ class BaseParams:
             if default_value is UNSET_FIELD:
                 changed[field_name] = getattr(self, field_name)
                 continue
+        # TODO if baseparams is inner field it will break
+        raw_class = self.__class__(**changed)
 
+        for field_name in self.__class__._get_annotations():
+            default_value = getattr(raw_class, field_name)
             current_value = getattr(self, field_name)
             if isinstance(current_value, BaseParams):
                 nested_changed = current_value.model_dump_non_defaults()
@@ -94,7 +98,7 @@ class BaseParams:
 
     def save_msgpack(self, save_path: str | Path) -> None:
         with open(save_path, "wb") as f:
-            pack_obj(self.__dict__, f)
+            pack_obj(self, f)
 
     @classmethod
     def load_msgpack(cls, msgpack_path: Path | str):
@@ -104,15 +108,23 @@ class BaseParams:
         with open(path, "rb") as f:
             loaded_data = unpack_obj(f)
 
+        if not isinstance(loaded_data, BaseParamsData):
+            raise ValueError("unpacked data is not a BaseParamsData")
+        if loaded_data.class_name != cls.__name__:
+            raise ValueError(
+                f"unpacked data is not a BaseParamsData of the same class: {loaded_data.class_name} != {cls.__name__}"
+            )
+
         return cls._postprocess_msgpack(loaded_data)
 
     @classmethod
-    def _postprocess_msgpack(cls, unpacked_dict: dict[str, Any]):
+    def _postprocess_msgpack(cls, unpacked_data: BaseParamsData):
         annotations = cls._get_annotations()
-        for k in unpacked_dict:
+        res_dict = {}
+        for k in unpacked_data.param_dict:
             k_type = annotations[k]
             # TODO for union handle the possibility of N of type baseparams/enum/sequence
-            if isinstance(unpacked_dict[k], BaseParamsData):
+            if isinstance(unpacked_data.param_dict[k], BaseParamsData):
                 # Handle nested BaseParamsData
                 if type(k_type) is UnionType:
                     for inner_type in get_args(k_type):
@@ -122,8 +134,8 @@ class BaseParams:
                 else:
                     base_params_class: BaseParams = k_type
 
-                unpacked_dict[k] = base_params_class._postprocess_msgpack(unpacked_dict[k].param_dict)
-            elif isinstance(unpacked_dict[k], EnumData):
+                res_dict[k] = base_params_class._postprocess_msgpack(unpacked_data.param_dict[k])
+            elif isinstance(unpacked_data.param_dict[k], EnumData):
                 # Handle EnumData
                 if type(k_type) is UnionType:
                     for inner_type in get_args(k_type):
@@ -132,11 +144,11 @@ class BaseParams:
                     enum_class: enum.EnumMeta = inner_type
                 else:
                     enum_class: enum.EnumMeta = k_type
-                unpacked_dict[k] = enum_class[unpacked_dict[k].value_name]
+                res_dict[k] = enum_class[unpacked_data.param_dict[k].value_name]
             # TODO handle sequence like...
 
         # TODO i dont want to validate and coerce here
-        return cls(**unpacked_dict)
+        return cls(**res_dict)
 
     @classmethod
     def _get_annotations(cls) -> dict[str, Type]:
@@ -164,5 +176,26 @@ class BaseParams:
         return super().__setattr__(name, value)
 
     def __repr__(self) -> str:
-        items = [f"{k}={repr(v)}" for k, v in self.__dict__.items()]
+        items = [f"{k}={repr(v)}" for k, v in self.to_dict().items()]
         return f"{self.__class__.__name__}({', '.join(items)})"
+
+    def to_dict(self, recursive: bool = True) -> dict[str, Any]:
+        """Convert the BaseParams instance to a dictionary, following reverse MRO.
+
+        Returns:
+            dict[str, Any]: Dictionary representation of the BaseParams instance
+        """
+        result = {}
+        # Iterate through class hierarchy in reverse MRO order
+        for base_cls in reversed(self.__class__.__mro__):
+            annotations = getattr(base_cls, "__annotations__", {})
+            for field_name in annotations:
+                if field_name.startswith("_"):
+                    continue
+                value = getattr(self, field_name)
+                # Handle nested BaseParams instances
+                if isinstance(value, BaseParams) and recursive:
+                    result[field_name] = value.to_dict()
+                else:
+                    result[field_name] = value
+        return result

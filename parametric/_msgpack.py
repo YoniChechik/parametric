@@ -111,7 +111,7 @@ def pack_obj(obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
         stream.write(encoded_class)
 
         # Pack the _param_dict
-        pack_obj(obj.__dict__, stream)
+        pack_obj(obj.to_dict(recursive=False), stream)
     elif isinstance(obj, bytes):
         stream.write(TYPE_BYTES)
         stream.write(struct.pack(">I", len(obj)))  # 4-byte length prefix
