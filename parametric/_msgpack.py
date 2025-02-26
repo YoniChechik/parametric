@@ -6,7 +6,21 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Union
 
-import numpy as np
+NUMPY_AVAILABLE = False
+try:
+    import numpy as np
+
+    NUMPY_AVAILABLE = True
+except ImportError:
+    pass
+
+TORCH_AVAILABLE = False
+try:
+    import torch
+
+    TORCH_AVAILABLE = True
+except ImportError:
+    pass
 
 # -- Type markers (1 byte each) --
 TYPE_NONE = bytes([0x00])
@@ -25,6 +39,7 @@ TYPE_ENUM = bytes([0x0C])  # New type marker for Enum
 TYPE_BASEPARAMS = bytes([0x0D])  # New type marker for BaseParams
 TYPE_BYTES = bytes([0x0E])  # New type marker for bytes objects
 TYPE_SET = bytes([0x0F])  # New type marker for sets
+TYPE_TORCH_TENSOR = bytes([0x10])  # New type marker for torch tensors
 # -- Serialization functions --
 
 
@@ -64,7 +79,7 @@ def pack_obj(obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
         for key, value in obj.items():
             pack_obj(key, stream)
             pack_obj(value, stream)
-    elif isinstance(obj, np.ndarray):
+    elif NUMPY_AVAILABLE and isinstance(obj, np.ndarray):
         stream.write(TYPE_NDARRAY)
         # Optimize dtype storage - store only the basic dtype string
         dtype_str = obj.dtype.str
@@ -121,6 +136,23 @@ def pack_obj(obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
         stream.write(struct.pack(">I", len(obj)))  # number of elements
         for item in obj:
             pack_obj(item, stream)
+    elif TORCH_AVAILABLE and isinstance(obj, torch.Tensor):
+        stream.write(TYPE_TORCH_TENSOR)
+        # Store device and dtype info
+        dtype_str = str(obj.dtype)
+
+        # Pack dtype string
+        encoded_dtype = dtype_str.encode("utf-8")
+        stream.write(struct.pack(">B", len(encoded_dtype)))
+        stream.write(encoded_dtype)
+
+        # Pack shape
+        stream.write(struct.pack(">B", len(obj.shape)))  # ndim
+        stream.write(struct.pack(f">{len(obj.shape)}I", *obj.shape))
+
+        # Convert to numpy and write data
+        numpy_data = obj.cpu().numpy().data  # numpy and tensor share data; data is memoryview
+        stream.write(numpy_data)
     else:
         raise TypeError(f"Unsupported type: {type(obj)}")
 
@@ -180,6 +212,8 @@ def unpack_obj(stream: io.IOBase) -> Any:
             d[key] = value
         return d
     elif type_marker == TYPE_NDARRAY:
+        if not NUMPY_AVAILABLE:
+            raise ImportError("numpy is required to deserialize ndarray objects")
         # Read dtype string length (1 byte) and dtype string
         dtype_length = struct.unpack(">B", stream.read(1))[0]
         dtype_str = stream.read(dtype_length).decode("utf-8")
@@ -194,7 +228,6 @@ def unpack_obj(stream: io.IOBase) -> Any:
         arr = np.frombuffer(data, dtype=dtype).reshape(shape)
 
         return arr
-
     elif type_marker == TYPE_PATH:
         (length,) = struct.unpack(">I", stream.read(4))
         data = stream.read(length)
@@ -231,5 +264,29 @@ def unpack_obj(stream: io.IOBase) -> Any:
         for _ in range(length):
             result_set.add(unpack_obj(stream))
         return result_set
+    elif type_marker == TYPE_TORCH_TENSOR:
+        if not TORCH_AVAILABLE:
+            raise ImportError("PyTorch is required to deserialize tensor objects")
+
+        # Read dtype
+        dtype_length = struct.unpack(">B", stream.read(1))[0]
+        dtype_str = stream.read(dtype_length).decode("utf-8")
+        dtype = np.dtype(dtype_str.split(".")[-1])
+
+        # Read shape
+        ndim = struct.unpack(">B", stream.read(1))[0]
+        shape = struct.unpack(f">{ndim}I", stream.read(4 * ndim))
+
+        # Calculate data size and read
+        data_length = np.prod(shape) * dtype.itemsize
+        data = stream.read(data_length)
+
+        # Create tensor
+        # NOTE torch.frombuffer will give warning: UserWarning: The given buffer is not writable, and PyTorch does not support non-writable tensors.
+        data_array = np.frombuffer(data, dtype=np.float32)  # Replace np.float32 with your actual dtype
+        data_writable = data_array.copy()
+        tensor = torch.from_numpy(data_writable)
+
+        return tensor
     else:
         raise ValueError(f"Unknown type marker: {type_marker}")

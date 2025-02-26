@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
+import torch
 
 from parametric import BaseParams
 
@@ -28,6 +29,7 @@ class A(BaseParams):
     np02: np.ndarray[int] = [1, 2, 3]
     np03: np.ndarray[int] = [[1, 2, 3], [4, 5, 6]]
     np04: np.ndarray[int] | None = [[1, 2, 3], [4, 5, 6]]
+    np05: np.ndarray = np.array([1, 2, 3])  # no inner args
 
     # For int
     i01: int = 1
@@ -92,7 +94,11 @@ class A(BaseParams):
     dict04: dict[str, np.ndarray[int]] = {"arr1": np.array([1, 2]), "arr2": np.array([3, 4])}
     dict06: dict[str, int] | None = {"x": 1, "y": 2}
 
-    # TODO add numpy dtypes
+    #  torch tensors
+    tensor01: torch.Tensor = torch.tensor([1, 2, 3])
+    tensor03: torch.Tensor = torch.tensor([[1, 2, 3], [4, 5, 6]])
+    tensor04: torch.Tensor | None = torch.tensor([[1, 2, 3], [4, 5, 6]])
+    tensor05: torch.Tensor = torch.tensor([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])
 
 
 class B(A):

@@ -21,18 +21,7 @@ def test_error_np_array_type():
 
     with pytest.raises(Exception) as exc_info:
         Test()
-    assert "Type of array_param cannot be 'np.array'. Try np.ndarray[int] instead" in str(exc_info.value)
-
-
-def test_error_np_ndarray_no_inner_arg():
-    class Test(BaseParams):
-        array_param: np.ndarray = np.array([1, 2, 3])
-
-    with pytest.raises(Exception) as exc_info:
-        Test()
-    assert "Type of array_param cannot be 'np.ndarray' without specifying element types (e.g. np.ndarray[int])" in str(
-        exc_info.value
-    )
+    assert "Type of array_param cannot be 'np.array'. Try np.ndarray instead" in str(exc_info.value)
 
 
 def test_error_np_ndarray_multiple_inner_arg():
@@ -41,7 +30,7 @@ def test_error_np_ndarray_multiple_inner_arg():
 
     with pytest.raises(Exception) as exc_info:
         Test()
-    assert "dtype of 'np.ndarray' array_param should have exactly 1 inner arg (e.g. np.ndarray[int])" in str(
+    assert "dtype of 'np.ndarray' array_param should have 1 inner arg at most (e.g. np.ndarray[int])" in str(
         exc_info.value
     )
 

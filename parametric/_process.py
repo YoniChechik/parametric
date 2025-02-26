@@ -6,6 +6,7 @@ from types import GeneratorType, UnionType
 from typing import Any, Literal, Sequence, Type, TypeVar, Union, get_args, get_origin
 
 import numpy as np
+import torch
 
 T = TypeVar("T")
 
@@ -61,6 +62,7 @@ def process_field(name: str, annotation: Type[T], value: Any, strict: bool) -> _
         DictTypeProcessor(),
         UnionTypeProcessor(),
         LiteralTypeProcessor(),
+        TorchTensorProcessor(),
         # needs to be last
         BaseParamsProcessor(),
     ]
@@ -275,40 +277,44 @@ class SetTypeProcessor(BaseProcessor):
 
 class NumpyTypeProcessor(BaseProcessor):
     def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
-        if annotation is np.ndarray:
-            raise TypeError(
-                f"Type of {name} cannot be 'np.ndarray' without specifying element types (e.g. np.ndarray[int])"
-            )
-
         outer_type = get_origin(annotation)
+        if annotation is np.array or outer_type is np.array:
+            raise TypeError(f"Type of {name} cannot be 'np.array'. Try np.ndarray instead")
 
-        if outer_type is np.array or annotation is np.array:
-            raise TypeError(f"Type of {name} cannot be 'np.array'. Try np.ndarray[int] instead")
-
-        if outer_type is not np.ndarray:
+        if annotation is not np.ndarray and outer_type is not np.ndarray:
             return None
-
-        inner_types = get_args(annotation)
 
         if not isinstance(value, (Sequence, np.ndarray)):
             raise ValueError(f"Value for numpy array parameter '{name}' must be array-like (sequence or ndarray)")
 
-        if len(inner_types) != 1:
-            raise ValueError(f"dtype of 'np.ndarray' {name} should have exactly 1 inner arg (e.g. np.ndarray[int])")
+        inner_types = get_args(annotation)
+        if len(inner_types) > 1:
+            raise ValueError(f"dtype of 'np.ndarray' {name} should have 1 inner arg at most (e.g. np.ndarray[int])")
+        if len(inner_types) == 1:
+            arr_dtype = inner_types[0]
 
-        arr_dtype = inner_types[0]
+            # Check for allowed numpy dtypes
+            allowed_dtypes = {int, float, bool}
+            allowed_dtypes.update(ALLOWED_NUMPY_TYPES)
 
-        # Check for allowed numpy dtypes
-        allowed_dtypes = {int, float, bool}
-        allowed_dtypes.update(ALLOWED_NUMPY_TYPES)
+            if arr_dtype not in allowed_dtypes:
+                raise ValueError(
+                    f"dtype of 'np.ndarray' {name} must be one of the allowed types: "
+                    f"{', '.join(str(dtype.__name__) for dtype in allowed_dtypes)}"
+                )
 
-        if arr_dtype not in allowed_dtypes:
-            raise ValueError(
-                f"dtype of 'np.ndarray' {name} must be one of the allowed types: "
-                f"{', '.join(str(dtype.__name__) for dtype in allowed_dtypes)}"
-            )
+            dtype_map = {int: np.int64, float: np.float32, bool: np.bool}
+            arr_dtype = dtype_map.get(arr_dtype, arr_dtype)
 
-        return _ProcessingResult(is_coerced=True, coerced_value=np.asarray(value, dtype=arr_dtype))
+            if isinstance(value, np.ndarray):
+                if value.dtype == arr_dtype:
+                    return _ProcessingResult(is_coerced=False)
+                else:
+                    return _ProcessingResult(is_coerced=True, coerced_value=np.asarray(value, dtype=arr_dtype))
+        if isinstance(value, np.ndarray):
+            return _ProcessingResult(is_coerced=False)
+        else:
+            return _ProcessingResult(is_coerced=True, coerced_value=np.asarray(value))
 
 
 class BaseParamsProcessor(BaseProcessor):
@@ -320,3 +326,63 @@ class BaseParamsProcessor(BaseProcessor):
             return _ProcessingResult(is_coerced=False)
 
         return None
+
+
+class TorchTensorProcessor(BaseProcessor):
+    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+        outer_type = get_origin(annotation)
+        if annotation is torch.tensor or outer_type is torch.tensor:
+            raise TypeError(f"Type of {name} cannot be 'torch.tensor'. Try torch.Tensor instead")
+
+        if annotation is not torch.Tensor and outer_type is not torch.Tensor:
+            return None
+
+        if not isinstance(value, (Sequence, torch.Tensor, np.ndarray)):
+            raise ValueError(
+                f"Value for torch tensor parameter '{name}' must be tensor-like (sequence, ndarray, or tensor)"
+            )
+
+        inner_types = get_args(annotation)
+        if len(inner_types) > 1:
+            raise ValueError(f"dtype of 'torch.Tensor' {name} should have 1 inner arg at most (e.g. torch.Tensor[int])")
+
+        if len(inner_types) == 1:
+            tensor_dtype = inner_types[0]
+
+            # Check for allowed tensor dtypes
+            allowed_dtypes = {
+                int,
+                float,
+                bool,
+                torch.int8,
+                torch.int16,
+                torch.int32,
+                torch.int64,
+                torch.uint8,
+                torch.float16,
+                torch.float32,
+                torch.float64,
+                torch.bool,
+            }
+
+            if tensor_dtype not in allowed_dtypes:
+                raise ValueError(
+                    f"dtype of 'torch.Tensor' {name} must be one of the allowed types: "
+                    f"{', '.join(str(dtype.__name__) for dtype in allowed_dtypes)}"
+                )
+
+            dtype_map = {int: torch.int64, float: torch.float32, bool: torch.bool}
+            torch_dtype = dtype_map.get(tensor_dtype, tensor_dtype)
+
+            if isinstance(value, torch.Tensor):
+                if value.dtype == torch_dtype:
+                    return _ProcessingResult(is_coerced=False)
+                else:
+                    return _ProcessingResult(is_coerced=True, coerced_value=value.to(torch_dtype))
+
+            return _ProcessingResult(is_coerced=True, coerced_value=torch.tensor(value, dtype=torch_dtype))
+
+        if isinstance(value, torch.Tensor):
+            return _ProcessingResult(is_coerced=False)
+        else:
+            return _ProcessingResult(is_coerced=True, coerced_value=torch.tensor(value))

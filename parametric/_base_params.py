@@ -159,7 +159,6 @@ class BaseParams:
             annotations.update(getattr(base_cls, "__annotations__", {}))
         return annotations
 
-    # ===== equality check
     def __eq__(self, other: "BaseParams") -> bool:
         if not isinstance(other, BaseParams):
             return False

@@ -2,6 +2,7 @@ import enum
 from typing import Any
 
 import numpy as np
+import torch
 
 
 def is_equal_field(val1: Any, val2: Any) -> bool:
@@ -19,6 +20,11 @@ def is_equal_field(val1: Any, val2: Any) -> bool:
         if not issubclass(type(val2), BaseParams):
             return False
         return val1 == val2
+
+    if isinstance(val1, torch.Tensor):
+        if not isinstance(val2, torch.Tensor):
+            return False
+        return torch.equal(val1, val2)
 
     # for np.ndarray
     if isinstance(val1, np.ndarray):
