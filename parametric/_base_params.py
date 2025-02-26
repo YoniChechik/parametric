@@ -12,6 +12,7 @@ from parametric._msgpack import BaseParamsData, EnumData, pack_obj, unpack_obj
 from parametric._process import process_field
 
 
+# TODO must work on default factory for mutables like dict,list,baseparams... otherwise the data is saved acrros different inits ofthe object since it's class level var
 # TODO idea: make this package dataclass++ where we can derive from msgpack or just reguler validation coercion checks + immutables only
 class _UNSET_FIELD:
     pass

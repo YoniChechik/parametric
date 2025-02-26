@@ -24,7 +24,6 @@ def is_equal_field(val1: Any, val2: Any) -> bool:
     if isinstance(val1, np.ndarray):
         return np.array_equal(val1, val2)
 
-    # TODO if we'll get the type annotation we can check per field only if np array is there
     # for dictionaries
     if isinstance(val1, dict):
         if set(val1.keys()) != set(val2.keys()):

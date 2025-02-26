@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
 from types import GeneratorType, UnionType
-from typing import Any, Literal, Type, TypeVar, Union, get_args, get_origin
+from typing import Any, Literal, Sequence, Type, TypeVar, Union, get_args, get_origin
 
 import numpy as np
 
@@ -290,8 +290,8 @@ class NumpyTypeProcessor(BaseProcessor):
 
         inner_types = get_args(annotation)
 
-        if not isinstance(value, (list, tuple, np.ndarray)):
-            raise ValueError(f"Value for numpy array parameter '{name}' must be array-like (list, tuple, or ndarray)")
+        if not isinstance(value, (Sequence, np.ndarray)):
+            raise ValueError(f"Value for numpy array parameter '{name}' must be array-like (sequence or ndarray)")
 
         if len(inner_types) != 1:
             raise ValueError(f"dtype of 'np.ndarray' {name} should have exactly 1 inner arg (e.g. np.ndarray[int])")
