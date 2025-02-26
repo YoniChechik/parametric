@@ -1,3 +1,4 @@
+import abc
 import datetime
 import io
 import struct
@@ -22,7 +23,7 @@ try:
 except ImportError:
     pass
 
-# -- Type markers (1 byte each) --
+# Define type markers for all supported types
 TYPE_NONE = bytes([0x00])
 TYPE_BOOL_FALSE = bytes([0x01])
 TYPE_BOOL_TRUE = bytes([0x02])
@@ -35,126 +36,272 @@ TYPE_DICT = bytes([0x08])
 TYPE_NDARRAY = bytes([0x09])
 TYPE_PATH = bytes([0x0A])
 TYPE_DATETIME = bytes([0x0B])
-TYPE_ENUM = bytes([0x0C])  # New type marker for Enum
-TYPE_BASEPARAMS = bytes([0x0D])  # New type marker for BaseParams
-TYPE_BYTES = bytes([0x0E])  # New type marker for bytes objects
-TYPE_SET = bytes([0x0F])  # New type marker for sets
-TYPE_TORCH_TENSOR = bytes([0x10])  # New type marker for torch tensors
-# -- Serialization functions --
+TYPE_ENUM = bytes([0x0C])
+TYPE_BASEPARAMS = bytes([0x0D])
+TYPE_BYTES = bytes([0x0E])
+TYPE_SET = bytes([0x0F])
+TYPE_TORCH_TENSOR = bytes([0x10])
 
 
-def pack_obj(obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
-    """Recursively pack an object to the stream with headers and length prefixes."""
-    # avoid circular import
-    from parametric import BaseParams
+class _AbstractType(abc.ABC):
+    def __init__(self):
+        raise TypeError(f"Cannot instantiate abstract class {self.__class__.__name__}")
 
-    if obj is None:
-        stream.write(TYPE_NONE)
-    elif isinstance(obj, bool):
-        stream.write(TYPE_BOOL_TRUE if obj else TYPE_BOOL_FALSE)
-    elif isinstance(obj, int):
-        stream.write(TYPE_INT)
-        stream.write(struct.pack(">q", obj))  # 8-byte big-endian integer
-    elif isinstance(obj, float):
-        stream.write(TYPE_FLOAT)
-        stream.write(struct.pack(">d", obj))  # 8-byte float (double)
-    elif isinstance(obj, str):
-        stream.write(TYPE_STR)
+    @classmethod
+    @abc.abstractmethod
+    def pack(cls, obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        """Pack the object into the stream."""
+        raise NotImplementedError(f"Abstract method {cls.pack.__name__}() must be implemented in derived class")
+
+    @classmethod
+    @abc.abstractmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> Any:
+        """Unpack an object from the stream given the type marker."""
+        raise NotImplementedError(f"Abstract method {cls.unpack.__name__}() must be implemented in derived class")
+
+    @classmethod
+    @abc.abstractmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        """Return True if this type is an extension type of the relevant class."""
+        raise NotImplementedError(f"Abstract method {cls.is_ext.__name__}() must be implemented in derived class")
+
+
+# Already implemented types
+class _NoneType(_AbstractType):
+    MARKER = TYPE_NONE
+
+    @classmethod
+    def pack(cls, obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> None:
+        return None
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _BoolType(_AbstractType):
+    MARKER_TRUE = TYPE_BOOL_TRUE
+    MARKER_FALSE = TYPE_BOOL_FALSE
+
+    @classmethod
+    def pack(cls, obj: bool, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER_TRUE if obj else cls.MARKER_FALSE)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> bool:
+        return marker == cls.MARKER_TRUE
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker in (cls.MARKER_TRUE, cls.MARKER_FALSE)
+
+
+class _IntType(_AbstractType):
+    MARKER = TYPE_INT
+
+    @classmethod
+    def pack(cls, obj: int, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        stream.write(struct.pack(">q", obj))
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> int:
+        data = stream.read(8)
+        return struct.unpack(">q", data)[0]
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _FloatType(_AbstractType):
+    MARKER = TYPE_FLOAT
+
+    @classmethod
+    def pack(cls, obj: float, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        stream.write(struct.pack(">d", obj))
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> float:
+        data = stream.read(8)
+        return struct.unpack(">d", data)[0]
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _StringType(_AbstractType):
+    MARKER = TYPE_STR
+
+    @classmethod
+    def pack(cls, obj: str, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
         encoded = obj.encode("utf-8")
-        stream.write(struct.pack(">I", len(encoded)))  # 4-byte length
+        stream.write(struct.pack(">I", len(encoded)))
         stream.write(encoded)
-    elif isinstance(obj, list):
-        stream.write(TYPE_LIST)
-        stream.write(struct.pack(">I", len(obj)))  # number of elements
-        for item in obj:
-            pack_obj(item, stream)
-    elif isinstance(obj, tuple):
-        stream.write(TYPE_TUPLE)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> str:
+        length = struct.unpack(">I", stream.read(4))[0]
+        data = stream.read(length)
+        return data.decode("utf-8")
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _ListType(_AbstractType):
+    MARKER = TYPE_LIST
+
+    @classmethod
+    def pack(cls, obj: list, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
         stream.write(struct.pack(">I", len(obj)))
         for item in obj:
             pack_obj(item, stream)
-    elif isinstance(obj, dict):
-        stream.write(TYPE_DICT)
-        stream.write(struct.pack(">I", len(obj)))  # number of key-value pairs
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> list:
+        length = struct.unpack(">I", stream.read(4))[0]
+        return [unpack_obj(stream) for _ in range(length)]
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _TupleType(_AbstractType):
+    MARKER = TYPE_TUPLE
+
+    @classmethod
+    def pack(cls, obj: tuple, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        stream.write(struct.pack(">I", len(obj)))
+        for item in obj:
+            pack_obj(item, stream)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> tuple:
+        length = struct.unpack(">I", stream.read(4))[0]
+        return tuple(unpack_obj(stream) for _ in range(length))
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _DictType(_AbstractType):
+    MARKER = TYPE_DICT
+
+    @classmethod
+    def pack(cls, obj: dict, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        stream.write(struct.pack(">I", len(obj)))
         for key, value in obj.items():
             pack_obj(key, stream)
             pack_obj(value, stream)
-    elif NUMPY_AVAILABLE and isinstance(obj, np.ndarray):
-        stream.write(TYPE_NDARRAY)
-        # Optimize dtype storage - store only the basic dtype string
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> dict:
+        length = struct.unpack(">I", stream.read(4))[0]
+        result = {}
+        for _ in range(length):
+            key = unpack_obj(stream)
+            value = unpack_obj(stream)
+            result[key] = value
+        return result
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+# --- New type classes ---
+
+
+class _NDArrayType(_AbstractType):
+    MARKER = TYPE_NDARRAY
+
+    @classmethod
+    def pack(cls, obj: np.ndarray, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        # Store dtype information
         dtype_str = obj.dtype.str
         encoded_dtype = dtype_str.encode("utf-8")
-        stream.write(struct.pack(">B", len(encoded_dtype)))  # Use 1 byte for dtype length
+        stream.write(struct.pack(">B", len(encoded_dtype)))
         stream.write(encoded_dtype)
-        # Optimize shape storage
-        stream.write(struct.pack(">B", len(obj.shape)))  # Use 1 byte for ndim
-        stream.write(struct.pack(f">{len(obj.shape)}I", *obj.shape))  # Pack all dims at once
-        # Write data directly using a memoryview for zero-copy access
-        stream.write(obj.data)  # obj.data is a memoryview
-    elif isinstance(obj, Path):
-        stream.write(TYPE_PATH)
+        # Store shape information
+        stream.write(struct.pack(">B", len(obj.shape)))
+        stream.write(struct.pack(f">{len(obj.shape)}I", *obj.shape))
+        # Write raw data (assumes a contiguous memory layout)
+        stream.write(obj.data)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> Any:
+        if not NUMPY_AVAILABLE:
+            raise ImportError("numpy is required to deserialize ndarray objects")
+        dtype_length = struct.unpack(">B", stream.read(1))[0]
+        dtype_str = stream.read(dtype_length).decode("utf-8")
+        ndim = struct.unpack(">B", stream.read(1))[0]
+        shape = struct.unpack(f">{ndim}I", stream.read(4 * ndim))
+        dtype = np.dtype(dtype_str)
+        data_length = dtype.itemsize * int(np.prod(shape))
+        data = stream.read(data_length)
+        arr = np.frombuffer(data, dtype=dtype).reshape(shape)
+        return arr
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _PathType(_AbstractType):
+    MARKER = TYPE_PATH
+
+    @classmethod
+    def pack(cls, obj: Path, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
         path_str = obj.as_posix()
         encoded = path_str.encode("utf-8")
         stream.write(struct.pack(">I", len(encoded)))
         stream.write(encoded)
-    elif isinstance(obj, datetime.datetime):
-        stream.write(TYPE_DATETIME)
-        # Save datetime as a timestamp (8-byte float)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> Path:
+        length = struct.unpack(">I", stream.read(4))[0]
+        data = stream.read(length)
+        return Path(data.decode("utf-8"))
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _DateTimeType(_AbstractType):
+    MARKER = TYPE_DATETIME
+
+    @classmethod
+    def pack(cls, obj: datetime.datetime, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
         timestamp = obj.timestamp()
         stream.write(struct.pack(">d", timestamp))
-    elif isinstance(obj, Enum):
-        stream.write(TYPE_ENUM)
-        # Store the enum class name and value name
-        class_name = obj.__class__.__name__
-        value_name = obj.name
 
-        # Pack class name
-        encoded_class = class_name.encode("utf-8")
-        stream.write(struct.pack(">I", len(encoded_class)))
-        stream.write(encoded_class)
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> datetime.datetime:
+        data = stream.read(8)
+        timestamp = struct.unpack(">d", data)[0]
+        return datetime.datetime.fromtimestamp(timestamp)
 
-        # Pack value name
-        encoded_name = value_name.encode("utf-8")
-        stream.write(struct.pack(">I", len(encoded_name)))
-        stream.write(encoded_name)
-    elif isinstance(obj, BaseParams):  # Check for BaseParams
-        stream.write(TYPE_BASEPARAMS)
-        # Store class name for reconstruction
-        class_name = obj.__class__.__name__
-        encoded_class = class_name.encode("utf-8")
-        stream.write(struct.pack(">I", len(encoded_class)))
-        stream.write(encoded_class)
-
-        # Pack the _param_dict
-        pack_obj(obj.to_dict(recursive=False), stream)
-    elif isinstance(obj, bytes):
-        stream.write(TYPE_BYTES)
-        stream.write(struct.pack(">I", len(obj)))  # 4-byte length prefix
-        stream.write(obj)
-    elif isinstance(obj, set):
-        stream.write(TYPE_SET)
-        stream.write(struct.pack(">I", len(obj)))  # number of elements
-        for item in obj:
-            pack_obj(item, stream)
-    elif TORCH_AVAILABLE and isinstance(obj, torch.Tensor):
-        stream.write(TYPE_TORCH_TENSOR)
-        # Store device and dtype info
-        dtype_str = str(obj.dtype)
-
-        # Pack dtype string
-        encoded_dtype = dtype_str.encode("utf-8")
-        stream.write(struct.pack(">B", len(encoded_dtype)))
-        stream.write(encoded_dtype)
-
-        # Pack shape
-        stream.write(struct.pack(">B", len(obj.shape)))  # ndim
-        stream.write(struct.pack(f">{len(obj.shape)}I", *obj.shape))
-
-        # Convert to numpy and write data
-        numpy_data = obj.cpu().numpy().data  # numpy and tensor share data; data is memoryview
-        stream.write(numpy_data)
-    else:
-        raise TypeError(f"Unsupported type: {type(obj)}")
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
 
 
 @dataclass
@@ -163,130 +310,217 @@ class EnumData:
     value_name: str
 
 
+class _EnumType(_AbstractType):
+    MARKER = TYPE_ENUM
+
+    @classmethod
+    def pack(cls, obj: Enum, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        class_name = obj.__class__.__name__
+        value_name = obj.name
+        encoded_class = class_name.encode("utf-8")
+        stream.write(struct.pack(">I", len(encoded_class)))
+        stream.write(encoded_class)
+        encoded_name = value_name.encode("utf-8")
+        stream.write(struct.pack(">I", len(encoded_name)))
+        stream.write(encoded_name)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> EnumData:
+        class_len = struct.unpack(">I", stream.read(4))[0]
+        class_name = stream.read(class_len).decode("utf-8")
+        value_len = struct.unpack(">I", stream.read(4))[0]
+        value_name = stream.read(value_len).decode("utf-8")
+        return EnumData(class_name=class_name, value_name=value_name)
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
 @dataclass
 class BaseParamsData:
     class_name: str
     param_dict: dict
 
 
-def unpack_obj(stream: io.IOBase) -> Any:
-    """Recursively unpack an object from the stream."""
-    type_marker = stream.read(1)
-    if not type_marker:
-        raise EOFError("Unexpected end of stream")
+class _BaseParamsType(_AbstractType):
+    MARKER = TYPE_BASEPARAMS
 
-    if type_marker == TYPE_NONE:
-        return None
-    elif type_marker == TYPE_BOOL_FALSE:
-        return False
-    elif type_marker == TYPE_BOOL_TRUE:
-        return True
-    elif type_marker == TYPE_INT:
-        data = stream.read(8)
-        return struct.unpack(">q", data)[0]
-    elif type_marker == TYPE_FLOAT:
-        data = stream.read(8)
-        return struct.unpack(">d", data)[0]
-    elif type_marker == TYPE_STR:
-        (length,) = struct.unpack(">I", stream.read(4))
-        data = stream.read(length)
-        return data.decode("utf-8")
-    elif type_marker == TYPE_LIST:
-        (length,) = struct.unpack(">I", stream.read(4))
-        lst = []
-        for _ in range(length):
-            lst.append(unpack_obj(stream))
-        return lst
-    elif type_marker == TYPE_TUPLE:
-        (length,) = struct.unpack(">I", stream.read(4))
-        lst = []
-        for _ in range(length):
-            lst.append(unpack_obj(stream))
-        return tuple(lst)
-    elif type_marker == TYPE_DICT:
-        (length,) = struct.unpack(">I", stream.read(4))
-        d = {}
-        for _ in range(length):
-            key = unpack_obj(stream)
-            value = unpack_obj(stream)
-            d[key] = value
-        return d
-    elif type_marker == TYPE_NDARRAY:
-        if not NUMPY_AVAILABLE:
-            raise ImportError("numpy is required to deserialize ndarray objects")
-        # Read dtype string length (1 byte) and dtype string
-        dtype_length = struct.unpack(">B", stream.read(1))[0]
-        dtype_str = stream.read(dtype_length).decode("utf-8")
-        # Read shape: number of dimensions and each dimension (4 bytes each)
-        ndim = struct.unpack(">B", stream.read(1))[0]
-        shape = struct.unpack(f">{ndim}I", stream.read(4 * ndim))
-        # Calculate data length from shape and dtype
-        dtype = np.dtype(dtype_str)
-        data_length = dtype.itemsize * np.prod(shape)
+    @classmethod
+    def pack(cls, obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        # 'BaseParams' is assumed to have a method to_dict(recursive=False)
+        stream.write(cls.MARKER)
+        class_name = obj.__class__.__name__
+        encoded_class = class_name.encode("utf-8")
+        stream.write(struct.pack(">I", len(encoded_class)))
+        stream.write(encoded_class)
+        # Pack the parameters dictionary
+        pack_obj(obj.to_dict(recursive=False), stream)
 
-        data = stream.read(data_length)
-        arr = np.frombuffer(data, dtype=dtype).reshape(shape)
-
-        return arr
-    elif type_marker == TYPE_PATH:
-        (length,) = struct.unpack(">I", stream.read(4))
-        data = stream.read(length)
-        return Path(data.decode("utf-8"))
-    elif type_marker == TYPE_DATETIME:
-        data = stream.read(8)
-        timestamp = struct.unpack(">d", data)[0]
-        return datetime.datetime.fromtimestamp(timestamp)
-    elif type_marker == TYPE_ENUM:
-        # Read class name
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> BaseParamsData:
         class_len = struct.unpack(">I", stream.read(4))[0]
         class_name = stream.read(class_len).decode("utf-8")
-
-        # Read value name
-        value_len = struct.unpack(">I", stream.read(4))[0]
-        value_name = stream.read(value_len).decode("utf-8")
-
-        return EnumData(class_name=class_name, value_name=value_name)
-    elif type_marker == TYPE_BASEPARAMS:
-        # Read class name
-        class_len = struct.unpack(">I", stream.read(4))[0]
-        class_name = stream.read(class_len).decode("utf-8")
-
-        # Read param dict
         param_dict = unpack_obj(stream)
-
         return BaseParamsData(class_name=class_name, param_dict=param_dict)
-    elif type_marker == TYPE_BYTES:
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _BytesType(_AbstractType):
+    MARKER = TYPE_BYTES
+
+    @classmethod
+    def pack(cls, obj: bytes, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        stream.write(struct.pack(">I", len(obj)))
+        stream.write(obj)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> bytes:
         length = struct.unpack(">I", stream.read(4))[0]
         return stream.read(length)
-    elif type_marker == TYPE_SET:
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _SetType(_AbstractType):
+    MARKER = TYPE_SET
+
+    @classmethod
+    def pack(cls, obj: set, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        stream.write(struct.pack(">I", len(obj)))
+        for item in obj:
+            pack_obj(item, stream)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> set:
         (length,) = struct.unpack(">I", stream.read(4))
         result_set = set()
         for _ in range(length):
             result_set.add(unpack_obj(stream))
         return result_set
-    elif type_marker == TYPE_TORCH_TENSOR:
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+class _TorchTensorType(_AbstractType):
+    MARKER = TYPE_TORCH_TENSOR
+
+    @classmethod
+    def pack(cls, obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        # Store dtype information (e.g., "torch.float32")
+        dtype_str = str(obj.dtype)
+        encoded_dtype = dtype_str.encode("utf-8")
+        stream.write(struct.pack(">B", len(encoded_dtype)))
+        stream.write(encoded_dtype)
+        # Store shape
+        stream.write(struct.pack(">B", len(obj.shape)))
+        stream.write(struct.pack(f">{len(obj.shape)}I", *obj.shape))
+        # Write the tensor data by converting to a numpy memoryview
+        numpy_data = obj.cpu().numpy().data
+        stream.write(numpy_data)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> Any:
         if not TORCH_AVAILABLE:
             raise ImportError("PyTorch is required to deserialize tensor objects")
-
-        # Read dtype
         dtype_length = struct.unpack(">B", stream.read(1))[0]
         dtype_str = stream.read(dtype_length).decode("utf-8")
+        # Extract the basic dtype string (assumes format like "torch.float32")
         dtype = np.dtype(dtype_str.split(".")[-1])
-
-        # Read shape
         ndim = struct.unpack(">B", stream.read(1))[0]
         shape = struct.unpack(f">{ndim}I", stream.read(4 * ndim))
-
-        # Calculate data size and read
-        data_length = np.prod(shape) * dtype.itemsize
+        data_length = int(np.prod(shape)) * dtype.itemsize
         data = stream.read(data_length)
-
-        # Create tensor
-        # NOTE torch.frombuffer will give warning: UserWarning: The given buffer is not writable, and PyTorch does not support non-writable tensors.
-        data_array = np.frombuffer(data, dtype=np.float32)  # Replace np.float32 with your actual dtype
-        data_writable = data_array.copy()
-        tensor = torch.from_numpy(data_writable)
-
+        # Create a writable numpy array from the data
+        data_array = np.frombuffer(data, dtype=dtype).copy()
+        tensor = torch.from_numpy(data_array)
         return tensor
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
+# --- Refactored helper functions ---
+
+
+def pack_obj(obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+    """Recursively pack an object to the stream using the appropriate type class."""
+    # avoid circular import; BaseParams is expected to be defined elsewhere
+    from parametric import BaseParams  # type: ignore
+
+    if obj is None:
+        _NoneType.pack(obj, stream)
+    elif isinstance(obj, bool):
+        _BoolType.pack(obj, stream)
+    elif isinstance(obj, int):
+        _IntType.pack(obj, stream)
+    elif isinstance(obj, float):
+        _FloatType.pack(obj, stream)
+    elif isinstance(obj, str):
+        _StringType.pack(obj, stream)
+    elif isinstance(obj, list):
+        _ListType.pack(obj, stream)
+    elif isinstance(obj, tuple):
+        _TupleType.pack(obj, stream)
+    elif isinstance(obj, dict):
+        _DictType.pack(obj, stream)
+    elif NUMPY_AVAILABLE and isinstance(obj, np.ndarray):
+        _NDArrayType.pack(obj, stream)
+    elif isinstance(obj, Path):
+        _PathType.pack(obj, stream)
+    elif isinstance(obj, datetime.datetime):
+        _DateTimeType.pack(obj, stream)
+    elif isinstance(obj, Enum):
+        _EnumType.pack(obj, stream)
+    elif isinstance(obj, BaseParams):
+        _BaseParamsType.pack(obj, stream)
+    elif isinstance(obj, bytes):
+        _BytesType.pack(obj, stream)
+    elif isinstance(obj, set):
+        _SetType.pack(obj, stream)
+    elif TORCH_AVAILABLE and isinstance(obj, torch.Tensor):
+        _TorchTensorType.pack(obj, stream)
     else:
-        raise ValueError(f"Unknown type marker: {type_marker}")
+        raise TypeError(f"Unsupported type: {type(obj)}")
+
+
+def unpack_obj(stream: io.IOBase) -> Any:
+    """Recursively unpack an object from the stream by delegating to the correct type class."""
+    type_marker = stream.read(1)
+    if not type_marker:
+        raise EOFError("Unexpected end of stream")
+
+    for cls in (
+        _NoneType,
+        _BoolType,
+        _IntType,
+        _FloatType,
+        _StringType,
+        _ListType,
+        _TupleType,
+        _DictType,
+        _NDArrayType,
+        _PathType,
+        _DateTimeType,
+        _EnumType,
+        _BytesType,
+        _SetType,
+        _TorchTensorType,
+        # MUST be last
+        _BaseParamsType,
+    ):
+        if cls.is_ext(type_marker):
+            return cls.unpack(stream, type_marker)
+    raise ValueError(f"Unknown type marker: {type_marker}")
