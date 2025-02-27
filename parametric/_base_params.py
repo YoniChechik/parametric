@@ -1,5 +1,4 @@
 import enum
-from dataclasses import dataclass
 from pathlib import Path
 from types import UnionType
 from typing import Any, Type, get_args
@@ -13,7 +12,6 @@ from parametric._process import process_field
 
 
 # TODO must work on default factory for mutables like dict,list,baseparams... otherwise the data is saved acrros different inits ofthe object since it's class level var
-# TODO idea: make this package dataclass++ where we can derive from msgpack or just reguler validation coercion checks + immutables only
 class _UNSET_FIELD:
     pass
 
@@ -21,23 +19,19 @@ class _UNSET_FIELD:
 UNSET_FIELD = _UNSET_FIELD()
 
 
-# TODO work on this shit
-@dataclass(frozen=True)
-class OnInitConfig:
-    """Configuration settings for MyDataclass subclasses."""
-
-    validate_assignment: bool = True
-    validate_on_init: bool = True
-    coerce_when_validating: bool = False
-
-
-# @dataclass_transform is a decorator that helps typecheckers and IDEs understand the dataclass-like behavior of the class.
+# @dataclass_transform is a decorator that helps typecheckers and IDEs understand the dataclass-like behavior all sub-class.
+# We built this class so all IDEs will recognize private params like __process__
 @dataclass_transform()
-class BaseParams:
+class XXX:
+    pass
+
+
+class BaseParams(XXX):
     """Base class mimicking dataclass behavior with configurable settings."""
 
-    __on_init_config__ = OnInitConfig()
+    __process__: bool = True
 
+    # Add private process flag
     def __init_subclass__(cls):
         super().__init_subclass__()
 
@@ -52,10 +46,11 @@ class BaseParams:
             raise TypeError(f"{cls.__name__} cannot be instantiated directly, only derive from")
         return super().__new__(cls)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__()
-        if len(args) > 0:
-            raise ValueError("BaseParams does not accept positional arguments")
+        if "__process__" in kwargs:
+            self.__setattr__("__process__", kwargs["__process__"])
+            del kwargs["__process__"]
 
         # set default values from instantiated class
         for k, v in kwargs.items():
@@ -63,13 +58,13 @@ class BaseParams:
                 raise AttributeError(f"`{k}` is not a valid field in {self.__class__.__name__}")
             super().__setattr__(k, v)
 
-        if self.__on_init_config__.validate_on_init:
-            self.validate()
+        if self.__process__:
+            self._process_all()
 
-    def validate(self):
+    def _process_all(self):
         for name, declared_type in self._get_annotations().items():
             input_value = getattr(self, name)
-            result = process_field(name, declared_type, input_value, strict=self.__on_init_config__.validate_on_init)
+            result = process_field(name, declared_type, input_value)
             if result is not None and result.is_coerced:
                 setattr(self, name, result.coerced_value)
 
@@ -120,6 +115,12 @@ class BaseParams:
 
     @classmethod
     def _postprocess_msgpack(cls, unpacked_data: BaseParamsData):
+        # TODO this is only possible if all type hints exists and validated
+        # amybe lets save all enums and baseclass?
+        if cls.__name__ != unpacked_data.class_name:
+            raise ValueError(
+                f"unpacked data is not a BaseParamsData of the same class: {unpacked_data.class_name} != {cls.__name__}"
+            )
         annotations = cls._get_annotations()
         res_dict = {}
         for k in unpacked_data.param_dict:
@@ -146,17 +147,24 @@ class BaseParams:
                 else:
                     enum_class: enum.EnumMeta = k_type
                 res_dict[k] = enum_class[unpacked_data.param_dict[k].value_name]
+            # TODO handle list better
+            elif isinstance(unpacked_data.param_dict[k], (list, tuple, set, frozenset)):
+                res_dict[k] = unpacked_data.param_dict[k]
+            else:
+                res_dict[k] = unpacked_data.param_dict[k]
             # TODO handle sequence like...
 
-        # TODO i dont want to validate and coerce here
-        return cls(**res_dict)
+        return cls(**res_dict, __process__=False)
 
     @classmethod
     def _get_annotations(cls) -> dict[str, Type]:
         # Collect __annotations__ from base classes recursively, starting from object->BaseParams->...
         annotations: dict[str, Type] = {}
         for base_cls in reversed(cls.__mro__):
-            annotations.update(getattr(base_cls, "__annotations__", {}))
+            base_annotations = getattr(base_cls, "__annotations__", {})
+            # Only include annotations that don't start with underscore
+            filtered_annotations = {k: v for k, v in base_annotations.items() if not k.startswith("_")}
+            annotations.update(filtered_annotations)
         return annotations
 
     def __eq__(self, other: "BaseParams") -> bool:
@@ -171,8 +179,18 @@ class BaseParams:
         return True
 
     def __setattr__(self, name, value):
+        if name == "__process__":
+            return super().__setattr__(name, value)
+
         if name not in self._get_annotations():
             raise AttributeError(f"`{name}` is not a valid field in {self.__class__.__name__}")
+
+        # Process and validate the field if process flag is enabled
+        if self.__process__:
+            result = process_field(name, self._get_annotations()[name], value)
+            if result is not None and result.is_coerced:
+                value = result.coerced_value
+
         return super().__setattr__(name, value)
 
     def __repr__(self) -> str:

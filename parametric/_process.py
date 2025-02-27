@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
 from types import GeneratorType, UnionType
-from typing import Any, Literal, Sequence, Type, TypeVar, Union, get_args, get_origin
+from typing import Any, Literal, Sequence, Type, TypeVar, get_args, get_origin
 
 import numpy as np
 import torch
@@ -31,28 +31,9 @@ class _ProcessingResult:
         self.coerced_value = coerced_value
 
 
-def process_field(name: str, annotation: Type[T], value: Any, strict: bool) -> _ProcessingResult | None:
-    if annotation == Any:
-        raise ValueError(f"Type `Any` is not allowed, cannot convert '{name}'")
-
-    if annotation is Ellipsis:
-        raise ValueError(
-            f"Ellipsis (`...`) is only allowed in this type format `tuple(x, ...)`, cannot convert '{name}'"
-        )
-
-    # Check old style type hints
-    try:
-        if annotation._name == "Tuple":
-            raise ValueError("Old Tuple[x,y,z] type is bad practice. Use tuple[x,y,z] instead.")
-        if annotation._name == "Optional":
-            raise ValueError("Old Optional[x] type is bad practice. Use x | None instead.")
-    except AttributeError:
-        pass
-
-    if get_origin(annotation) is Union or annotation is Union:
-        raise ValueError("Old Union[x,y,z] type is bad practice. Use x | y | z instead.")
-
+def process_field(name: str, annotation: Type[T], value: Any) -> _ProcessingResult | None:
     processors: list[BaseProcessor] = [
+        BadTypesProcessor(),
         BasicTypeProcessor(),
         EnumProcessor(),
         NumpyTypeProcessor(),
@@ -68,7 +49,7 @@ def process_field(name: str, annotation: Type[T], value: Any, strict: bool) -> _
     ]
 
     for processor in processors:
-        result = processor(name, annotation, value, strict)
+        result = processor(name, annotation, value)
         if result is not None:
             return result
 
@@ -77,12 +58,25 @@ def process_field(name: str, annotation: Type[T], value: Any, strict: bool) -> _
 
 class BaseProcessor(ABC):
     @abstractmethod
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         pass
 
 
+class BadTypesProcessor(BaseProcessor):
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
+        if annotation == Any:
+            raise ValueError(f"Type `Any` is not allowed, cannot convert '{name}'")
+
+        if annotation is Ellipsis:
+            raise ValueError(
+                f"Ellipsis (`...`) is only allowed in this type format `tuple(x, ...)`, cannot convert '{name}'"
+            )
+
+        return None
+
+
 class BasicTypeProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         if not (annotation in {int, float, bool, str, bytes, Path, type(None)} or annotation in ALLOWED_NUMPY_TYPES):
             return None
 
@@ -95,7 +89,7 @@ class BasicTypeProcessor(BaseProcessor):
 
 
 class EnumProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         if not isinstance(annotation, enum.EnumMeta):
             return None
 
@@ -108,7 +102,13 @@ class EnumProcessor(BaseProcessor):
 
 
 class UnionTypeProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
+        if "_name" in dir(annotation) and annotation.__name__ == "Optional":
+            raise ValueError("Old Optional[x] type is bad practice. Use x | None instead.")
+
+        if "_name" in dir(annotation) and annotation.__name__ == "Union":
+            raise ValueError("Old Union[x,y,z] type is bad practice. Use x | y | z instead.")
+
         if get_origin(annotation) is not UnionType:
             return None
 
@@ -128,7 +128,7 @@ class UnionTypeProcessor(BaseProcessor):
         # Try conversion with the non-None type
         main_type = next(t for t in inner_types if t is not type(None))
         try:
-            return process_field(name, main_type, value, strict=strict)
+            return process_field(name, main_type, value)
         except Exception as e:
             raise ValueError(
                 f"Could not convert value '{value}' to either None or {main_type} for parameter '{name}': {str(e)}"
@@ -136,7 +136,7 @@ class UnionTypeProcessor(BaseProcessor):
 
 
 class LiteralTypeProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         if get_origin(annotation) is not Literal:
             return None
 
@@ -160,7 +160,7 @@ class LiteralTypeProcessor(BaseProcessor):
 
 
 class DictTypeProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         outer_type = get_origin(annotation)
         if annotation is dict and outer_type is None:
             raise ValueError(
@@ -181,8 +181,8 @@ class DictTypeProcessor(BaseProcessor):
         res = {}
 
         for k, v in value.items():
-            key_result = process_field(f"{name} key", key_type, k, strict=strict)
-            value_result = process_field(f"{name} value", value_type, v, strict=strict)
+            key_result = process_field(f"{name} key", key_type, k)
+            value_result = process_field(f"{name} value", value_type, v)
 
             key = key_result.coerced_value if key_result is not None and key_result.is_coerced else k
             val = value_result.coerced_value if value_result is not None and value_result.is_coerced else v
@@ -191,12 +191,12 @@ class DictTypeProcessor(BaseProcessor):
         return _ProcessingResult(is_coerced=True, coerced_value=res)
 
 
-def _process_sequence_elements(name: str, value: Any, inner_types: tuple, strict: bool, *, is_variadic: bool) -> list:
+def _process_sequence_elements(name: str, value: Any, inner_types: tuple, *, is_variadic: bool) -> list:
     """Common helper function to process sequence elements."""
     res = []
     for i, val_i in enumerate(value):
         curr_inner_type = inner_types[0] if is_variadic else inner_types[i]
-        result = process_field(name, curr_inner_type, val_i, strict=strict)
+        result = process_field(name, curr_inner_type, val_i)
         res.append(result.coerced_value if result.is_coerced else val_i)
     return res
 
@@ -208,7 +208,7 @@ def _validate_sequence_value(name: str, value: Any):
 
 
 class ListTypeProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         if annotation is list:
             raise ValueError(f"list type {name} must have exactly inner type argument (e.g. list[int])")
 
@@ -223,15 +223,18 @@ class ListTypeProcessor(BaseProcessor):
             raise ValueError(f"list type {name} must have exactly 1 type argument (e.g. list[int])")
 
         is_variadic = inner_types[-1] is Ellipsis or len(inner_types) == 1
-        result = _process_sequence_elements(name, value, inner_types, strict, is_variadic=is_variadic)
+        result = _process_sequence_elements(name, value, inner_types, is_variadic=is_variadic)
 
         return _ProcessingResult(is_coerced=True, coerced_value=list(result))
 
 
 class TupleTypeProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
+        if "_name" in dir(annotation) and annotation.__name__ == "Tuple":
+            raise ValueError("Old Tuple[x,y,z] type is bad practice. Use tuple[x,y,z] instead.")
+
         if annotation is tuple:
-            raise ValueError(f"tuple type {name} must have exactly inner type argument (e.g. tuple[int, int])")
+            raise ValueError(f"tuple type {name} must have inner type argument (e.g. tuple[int, int])")
 
         outer_type = get_origin(annotation)
         if outer_type is not tuple:
@@ -250,12 +253,12 @@ class TupleTypeProcessor(BaseProcessor):
         elif len(inner_types) != len(value):
             raise ValueError(f"Expected in {name} a tuple of length {len(inner_types)}, got {len(value)}")
 
-        result = _process_sequence_elements(name, value, inner_types, strict, is_variadic=is_variadic)
+        result = _process_sequence_elements(name, value, inner_types, is_variadic=is_variadic)
         return _ProcessingResult(is_coerced=True, coerced_value=tuple(result))
 
 
 class SetTypeProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         if annotation is set:
             raise ValueError(f"set type {name} must have exactly inner type argument (e.g. set[int])")
 
@@ -270,13 +273,13 @@ class SetTypeProcessor(BaseProcessor):
             raise ValueError(f"set type {name} must have exactly 1 type argument (e.g. set[int])")
 
         is_variadic = inner_types[-1] is Ellipsis or len(inner_types) == 1
-        result = _process_sequence_elements(name, value, inner_types, strict, is_variadic=is_variadic)
+        result = _process_sequence_elements(name, value, inner_types, is_variadic=is_variadic)
 
         return _ProcessingResult(is_coerced=True, coerced_value=set(result))
 
 
 class NumpyTypeProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         outer_type = get_origin(annotation)
         if annotation is np.array or outer_type is np.array:
             raise TypeError(f"Type of {name} cannot be 'np.array'. Try np.ndarray instead")
@@ -318,7 +321,7 @@ class NumpyTypeProcessor(BaseProcessor):
 
 
 class BaseParamsProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         # avoid circular import
         from parametric import BaseParams
 
@@ -329,7 +332,7 @@ class BaseParamsProcessor(BaseProcessor):
 
 
 class TorchTensorProcessor(BaseProcessor):
-    def __call__(self, name: str, annotation: Type, value: Any, strict: bool) -> _ProcessingResult | None:
+    def __call__(self, name: str, annotation: Type, value: Any) -> _ProcessingResult | None:
         outer_type = get_origin(annotation)
         if annotation is torch.tensor or outer_type is torch.tensor:
             raise TypeError(f"Type of {name} cannot be 'torch.tensor'. Try torch.Tensor instead")

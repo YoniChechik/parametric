@@ -226,42 +226,6 @@ class _DictType(_AbstractType):
 # --- New type classes ---
 
 
-class _NDArrayType(_AbstractType):
-    MARKER = TYPE_NDARRAY
-
-    @classmethod
-    def pack(cls, obj: np.ndarray, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
-        stream.write(cls.MARKER)
-        # Store dtype information
-        dtype_str = obj.dtype.str
-        encoded_dtype = dtype_str.encode("utf-8")
-        stream.write(struct.pack(">B", len(encoded_dtype)))
-        stream.write(encoded_dtype)
-        # Store shape information
-        stream.write(struct.pack(">B", len(obj.shape)))
-        stream.write(struct.pack(f">{len(obj.shape)}I", *obj.shape))
-        # Write raw data (assumes a contiguous memory layout)
-        stream.write(obj.data)
-
-    @classmethod
-    def unpack(cls, stream: io.IOBase, marker: bytes) -> Any:
-        if not NUMPY_AVAILABLE:
-            raise ImportError("numpy is required to deserialize ndarray objects")
-        dtype_length = struct.unpack(">B", stream.read(1))[0]
-        dtype_str = stream.read(dtype_length).decode("utf-8")
-        ndim = struct.unpack(">B", stream.read(1))[0]
-        shape = struct.unpack(f">{ndim}I", stream.read(4 * ndim))
-        dtype = np.dtype(dtype_str)
-        data_length = dtype.itemsize * int(np.prod(shape))
-        data = stream.read(data_length)
-        arr = np.frombuffer(data, dtype=dtype).reshape(shape)
-        return arr
-
-    @classmethod
-    def is_ext(cls, marker: bytes) -> bool:
-        return marker == cls.MARKER
-
-
 class _PathType(_AbstractType):
     MARKER = TYPE_PATH
 
@@ -412,6 +376,42 @@ class _SetType(_AbstractType):
         return marker == cls.MARKER
 
 
+class _NDArrayType(_AbstractType):
+    MARKER = TYPE_NDARRAY
+
+    @classmethod
+    def pack(cls, obj: Any, stream: Union[io.BytesIO, io.BufferedWriter]) -> None:
+        stream.write(cls.MARKER)
+        # Store dtype information
+        dtype_str = obj.dtype.str
+        encoded_dtype = dtype_str.encode("utf-8")
+        stream.write(struct.pack(">B", len(encoded_dtype)))
+        stream.write(encoded_dtype)
+        # Store shape information
+        stream.write(struct.pack(">B", len(obj.shape)))
+        stream.write(struct.pack(f">{len(obj.shape)}I", *obj.shape))
+        # Write raw data (assumes a contiguous memory layout)
+        stream.write(obj.data)
+
+    @classmethod
+    def unpack(cls, stream: io.IOBase, marker: bytes) -> Any:
+        if not NUMPY_AVAILABLE:
+            raise ImportError("numpy is required to deserialize ndarray objects")
+        dtype_length = struct.unpack(">B", stream.read(1))[0]
+        dtype_str = stream.read(dtype_length).decode("utf-8")
+        ndim = struct.unpack(">B", stream.read(1))[0]
+        shape = struct.unpack(f">{ndim}I", stream.read(4 * ndim))
+        dtype = np.dtype(dtype_str)
+        data_length = dtype.itemsize * int(np.prod(shape))
+        data = stream.read(data_length)
+        arr = np.frombuffer(data, dtype=dtype).reshape(shape)
+        return arr
+
+    @classmethod
+    def is_ext(cls, marker: bytes) -> bool:
+        return marker == cls.MARKER
+
+
 class _TorchTensorType(_AbstractType):
     MARKER = TYPE_TORCH_TENSOR
 
@@ -444,7 +444,7 @@ class _TorchTensorType(_AbstractType):
         data = stream.read(data_length)
         # Create a writable numpy array from the data
         data_array = np.frombuffer(data, dtype=dtype).copy()
-        tensor = torch.from_numpy(data_array)
+        tensor = torch.from_numpy(data_array).reshape(shape)
         return tensor
 
     @classmethod
